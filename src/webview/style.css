@@ -25,12 +25,15 @@ body {
   font-size: 13px;
   line-height: 22px;
   font-weight: var(--vscode-font-weight);
+  overflow: hidden;
 }
 
 #root {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 4px 0;
 }
 
@@ -78,24 +81,8 @@ body {
   stroke-width: 2px;
 }
 
-.row:hover .graph-container .graph circle:nth-of-type(2) {
-  stroke: var(--vscode-list-hoverBackground);
-}
-
-.row.selected .graph-container .graph circle:nth-of-type(2) {
-  stroke: var(--vscode-list-inactiveSelectionBackground);
-}
-
 .graph-container.current .graph > circle:last-child {
   fill: var(--vscode-sideBar-background);
-}
-
-.row:hover .graph-container.current .graph > circle:last-child {
-  fill: var(--vscode-list-hoverBackground);
-}
-
-.row.selected .graph-container.current .graph > circle:last-child {
-  fill: var(--vscode-list-inactiveSelectionBackground);
 }
 
 .label-container {
@@ -122,8 +109,9 @@ body {
 }
 
 .label.branch {
-  background: color-mix(in srgb, var(--lane-color) 85%, transparent);
-  color: var(--vscode-editor-background);
+  background: var(--lane-color);
+  color: var(--vscode-editor-background, #0b0b0b);
+  font-weight: 500;
 }
 
 .label.branch.current {
@@ -137,11 +125,15 @@ body {
 
 .subject {
   margin-left: 8px;
-  color: var(--vscode-foreground);
+  color: var(--vscode-descriptionForeground);
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
   flex: 1;
+}
+
+.row.current .subject {
+  color: var(--vscode-foreground);
 }
 
 .row.branch-header .subject {
@@ -171,6 +163,45 @@ body {
   width: 14px;
   height: 14px;
   vertical-align: -2px;
+}
+
+/* Native VSCode scrollbar (square/blocky, no rounded macOS overlay).
+   -webkit-appearance: none is MANDATORY on macOS to override OS overlay. */
+*::-webkit-scrollbar,
+::-webkit-scrollbar {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  width: 10px;
+  height: 10px;
+  background: transparent;
+}
+
+*::-webkit-scrollbar-track,
+::-webkit-scrollbar-track {
+  background: transparent;
+  border: none;
+}
+
+*::-webkit-scrollbar-thumb,
+::-webkit-scrollbar-thumb {
+  background-color: var(--vscode-scrollbarSlider-background, #79797966);
+  border-radius: 0 !important;
+  border: none;
+}
+
+*::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--vscode-scrollbarSlider-hoverBackground, #646464b3);
+}
+
+*::-webkit-scrollbar-thumb:active,
+::-webkit-scrollbar-thumb:active {
+  background-color: var(--vscode-scrollbarSlider-activeBackground, #bfbfbf66);
+}
+
+*::-webkit-scrollbar-corner,
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .codicon-git-branch::before {

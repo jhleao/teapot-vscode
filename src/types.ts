@@ -1,18 +1,31 @@
+/**
+ * Commit shape aligned with teapot's shared/types/repo Commit.
+ * `message` holds the commit subject (first line of the full message).
+ */
 export interface Commit {
   sha: string;
-  subject: string;
+  message: string;
   author: string;
   timeMs: number;
+  parentSha: string;
 }
 
+/**
+ * Branch shape aligned with teapot's Branch (ref, headSha, isTrunk, isRemote).
+ * Extended with parent/children/commits for rendering convenience (MVP keeps
+ * things flat rather than mirroring StackNodeState's recursive tree).
+ */
 export interface BranchNode {
-  name: string;
+  ref: string;
   headSha: string;
-  parent: string | null;
+  baseSha: string;
   isTrunk: boolean;
+  isRemote: boolean;
   isCurrent: boolean;
-  commits: Commit[];
+  parent: string | null;
   children: string[];
+  ownedShas: string[];
+  commits: Commit[];
 }
 
 export interface StackState {

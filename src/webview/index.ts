@@ -40,10 +40,14 @@ interface RowModel {
   /** When this row is a branch-header, the parent branch's lane (for the curve). */
   parentLane?: number;
   parentColor?: string;
-  commit?: { sha: string; subject: string; author: string };
+  commit?: { sha: string; message: string; author: string };
   isCurrent: boolean;
   isBranchTip: boolean;
   isTrunk: boolean;
+  /** Whether the row's own lane has a connector reaching up to the row above. */
+  hasTop: boolean;
+  /** Whether the row's own lane has a connector reaching down to the row below. */
+  hasBottom: boolean;
 }
 
 /**
@@ -55,126 +59,131 @@ interface RowModel {
  */
 function layout(state: StackState): RowModel[] {
   const byName = new Map<string, BranchNode>();
-  for (const b of state.branches) byName.set(b.name, b);
+  for (const b of state.branches) byName.set(b.ref, b);
 
-  const lanes = new Map<string, number>();
-  const laneColors = [
-    'var(--lane-color-1)',
-    'var(--lane-color-2)',
-    'var(--lane-color-3)',
-    'var(--lane-color-4)',
-    'var(--lane-color-5)',
-  ];
+  // Teapot-style: muted gray for trunk + branches. Current branch gets accent.
+  // Pulled from --vscode-descriptionForeground to match the commit subject text
+  // color for visual consistency.
+  const GRAPH_COLOR = 'var(--vscode-descriptionForeground, #858585)';
+  const TRUNK_COLOR = 'var(--vscode-descriptionForeground, #858585)';
+  const CURRENT_COLOR = 'var(--vscode-focusBorder, var(--vscode-button-background, #007fd4))';
 
+  // Lane 0 = trunk, lane 1 = all branches (siblings share the lane; they never
+  // overlap in output since each branch's subtree is fully emitted before the
+  // next sibling starts).
+  const laneOf = (name: string): number => (byName.get(name)?.isTrunk ? 0 : 1);
   const colorOf = (name: string): string => {
-    if (byName.get(name)?.isTrunk) return 'var(--base-color)';
-    const lane = lanes.get(name) ?? 0;
-    return laneColors[lane % laneColors.length];
+    const b = byName.get(name);
+    if (b?.isCurrent) return CURRENT_COLOR;
+    return b?.isTrunk ? TRUNK_COLOR : GRAPH_COLOR;
+  };
+
+  // Walk from the current branch up to root and collect the ancestor chain.
+  // Children that contain current/ancestors are sorted first so that the
+  // current branch ends up at the TOP of the rendered output.
+  const currentChain = new Set<string>();
+  if (state.current) {
+    let p: string | null = state.current;
+    while (p) {
+      currentChain.add(p);
+      p = byName.get(p)?.parent ?? null;
+    }
+  }
+  const subtreeContainsCurrent = new Map<string, boolean>();
+  const containsCurrent = (name: string): boolean => {
+    if (subtreeContainsCurrent.has(name)) return subtreeContainsCurrent.get(name)!;
+    if (currentChain.has(name)) {
+      subtreeContainsCurrent.set(name, true);
+      return true;
+    }
+    const node = byName.get(name);
+    const has = node ? node.children.some(containsCurrent) : false;
+    subtreeContainsCurrent.set(name, has);
+    return has;
   };
 
   const rows: RowModel[] = [];
 
-  // Roots: trunk(s) and any branch with no parent
-  const roots: string[] = [];
-  for (const b of state.branches) {
-    if (!b.parent) roots.push(b.name);
-  }
-  // Prefer trunk last (it will be at the bottom of the stack visually)
+  const roots: string[] = state.branches.filter((b) => !b.parent).map((b) => b.ref);
+  // Trunk last so it renders at the bottom of the stack visually.
   roots.sort((a, b) => {
     const at = byName.get(a)?.isTrunk ? 1 : 0;
     const bt = byName.get(b)?.isTrunk ? 1 : 0;
     return at - bt;
   });
 
-  /**
-   * Recursively emit rows so that children appear ABOVE the parent branch.
-   * Returns the set of lanes that must "pass through" any rows emitted below
-   * this branch's header (because this branch continues upward past that point).
-   */
-  const emitBranch = (name: string, lane: number): void => {
+  const emitBranch = (name: string): void => {
     const node = byName.get(name);
     if (!node) return;
-    lanes.set(name, lane);
 
-    // First, emit all children (they sit above this branch)
-    const children = node.children.slice();
-    // Stable ordering: by name for determinism
-    children.sort();
-    let childLaneCursor = lane + 1;
-    const childLaneAssignments: Array<{ name: string; lane: number }> = [];
-    for (const childName of children) {
-      const childLane = childLaneCursor++;
-      childLaneAssignments.push({ name: childName, lane: childLane });
-    }
-    // Emit each child subtree in order (children higher up = last emitted first
-    // so they land on top). Actually: we want siblings stacked in order, top = first.
-    for (const { name: cn, lane: cl } of childLaneAssignments) {
-      emitBranch(cn, cl);
-    }
+    // Emission order: first-emitted children land at the top of the rendered
+    // output (we push children before self; FIFO order = top-down). So sort
+    // the subtree containing the current branch FIRST so it appears at top.
+    const children = node.children.slice().sort((a, b) => {
+      const ac = containsCurrent(a) ? 0 : 1;
+      const bc = containsCurrent(b) ? 0 : 1;
+      if (ac !== bc) return ac - bc;
+      return a.localeCompare(b);
+    });
+    for (const childName of children) emitBranch(childName);
 
-    // Now emit this branch's own rows (header + commits) — children's rows
-    // have already been pushed (they sit above).
+    const lane = laneOf(name);
     const laneColor = colorOf(name);
-
-    // Pass-through lanes: any ancestor branches whose lane is < our lane and
-    // still "active" at this level. Also, while we're emitting our own rows,
-    // siblings' lanes are no longer active (they ended above), but our parent
-    // and earlier-emitted uncle chains pass through.
-    // For simplicity, track pass-through as every active ancestor lane < our lane.
-    // Compute ancestors of this node.
-    const ancestorLanes: Array<{ lane: number; color: string }> = [];
-    let p = node.parent;
-    while (p) {
-      const pl = lanes.get(p);
-      if (pl !== undefined) ancestorLanes.push({ lane: pl, color: colorOf(p) });
-      p = byName.get(p)?.parent ?? null;
-    }
-
-    // Branch header row (sits just above the first commit of this branch)
-    const commits = node.commits;
     const parentName = node.parent;
-    const parentLane = parentName ? lanes.get(parentName) : undefined;
+    const parentLane = parentName ? laneOf(parentName) : undefined;
     const parentColor = parentName ? colorOf(parentName) : undefined;
 
-    // Emit commits top-to-bottom (newest first, matching git log order)
-    for (let i = 0; i < commits.length; i++) {
-      const c = commits[i];
-      const isTip = i === 0;
+    // Pass-through: only trunk (lane 0) passes through non-trunk rows, because
+    // all branches share lane 1. No deeper pass-through.
+    const ancestorLanes: Array<{ lane: number; color: string }> =
+      node.isTrunk ? [] : [{ lane: 0, color: TRUNK_COLOR }];
+
+    // Top connection on the tip commit: true only if this branch has children
+    // that were emitted above it. Otherwise the tip is "stack top" — the
+    // vertical line ends at the circle (teapot-style).
+    const hasChildrenAbove = node.children.length > 0;
+
+    // Bottom connection on the last commit: true if something connects below
+    // (either a branch-header row we'll emit, or — for trunk — more commits).
+    const willEmitHeader = !!parentName && parentLane !== undefined && parentLane !== lane;
+
+    const commits = node.commits;
+    if (commits.length === 0) {
       rows.push({
-        kind: 'commit',
-        branchName: name,
-        lane,
-        laneColor,
-        passThrough: ancestorLanes,
-        commit: { sha: c.sha, subject: c.subject, author: c.author },
-        isCurrent: isTip && node.isCurrent,
-        isBranchTip: isTip,
-        isTrunk: !!node.isTrunk,
+        kind: 'commit', branchName: name, lane, laneColor,
+        passThrough: ancestorLanes, commit: undefined,
+        isCurrent: node.isCurrent, isBranchTip: true, isTrunk: !!node.isTrunk,
+        hasTop: hasChildrenAbove,
+        hasBottom: willEmitHeader || !!parentName,
       });
+    } else {
+      for (let i = 0; i < commits.length; i++) {
+        const c = commits[i];
+        const isTip = i === 0;
+        const isLast = i === commits.length - 1;
+        rows.push({
+          kind: 'commit', branchName: name, lane, laneColor,
+          passThrough: ancestorLanes,
+          commit: { sha: c.sha, message: c.message, author: c.author },
+          isCurrent: isTip && node.isCurrent,
+          isBranchTip: isTip, isTrunk: !!node.isTrunk,
+          hasTop: isTip ? hasChildrenAbove : true,
+          hasBottom: isLast ? (willEmitHeader || !!parentName) : true,
+        });
+      }
     }
 
-    // If this is NOT trunk, emit a divergence row: shows the parent-branch curve
-    // joining its parent's lane. This sits below the last commit of this branch.
-    if (parentName && parentLane !== undefined) {
+    if (willEmitHeader) {
       rows.push({
-        kind: 'branch-header',
-        branchName: name,
-        lane,
-        laneColor,
-        passThrough: ancestorLanes,
-        parentLane,
-        parentColor,
-        isCurrent: false,
-        isBranchTip: false,
-        isTrunk: false,
+        kind: 'branch-header', branchName: name, lane, laneColor,
+        passThrough: ancestorLanes, parentLane, parentColor,
+        isCurrent: false, isBranchTip: false, isTrunk: false,
+        hasTop: true, hasBottom: true,
       });
     }
   };
 
-  let laneCursor = 0;
-  for (const r of roots) {
-    emitBranch(r, laneCursor++);
-  }
+  for (const r of roots) emitBranch(r);
 
   return rows;
 }
@@ -200,8 +209,15 @@ function drawCircle(cx: number, cy: number, r: number, color?: string, strokeWid
   return c;
 }
 
-function buildRowSvg(row: RowModel, laneCount: number): SVGSVGElement {
-  const width = SWIMLANE_WIDTH * (laneCount + 1);
+function buildRowSvg(row: RowModel, _laneCount: number): SVGSVGElement {
+  // Per-row width: only as wide as this row's own lane needs.
+  // Ancestor pass-through lanes are always < row.lane, so they fit in this width.
+  const maxLaneInRow = Math.max(
+    row.lane,
+    ...row.passThrough.map((p) => p.lane),
+    row.parentLane ?? 0
+  );
+  const width = SWIMLANE_WIDTH * (maxLaneInRow + 2);
   const svg = document.createElementNS(SVG_NS, 'svg');
   svg.setAttribute('class', 'graph');
   svg.setAttribute('width', String(width));
@@ -217,18 +233,31 @@ function buildRowSvg(row: RowModel, laneCount: number): SVGSVGElement {
   verticals.set(row.lane, row.laneColor);
 
   if (row.kind === 'commit') {
+    // Pass-through lanes: always full-height verticals (they're continuation
+    // lines of OTHER lanes that don't terminate at this row's circle).
     for (const [lane, color] of verticals) {
+      if (lane === row.lane) continue;
       const p = createPath(color, 1.5);
       p.setAttribute('d', `M ${laneX(lane)} 0 V ${SWIMLANE_HEIGHT}`);
       svg.append(p);
     }
-    // Commit circle on this row's lane
+    // Our own lane: draw only the segments that connect to neighbors above/below
+    // the circle. A stack-tip commit has no top connection → line stops at circle.
     const x = laneX(row.lane);
-    // Outer ring
+    if (row.hasTop) {
+      const p = createPath(row.laneColor, 1.5);
+      p.setAttribute('d', `M ${x} 0 V ${mid}`);
+      svg.append(p);
+    }
+    if (row.hasBottom) {
+      const p = createPath(row.laneColor, 1.5);
+      p.setAttribute('d', `M ${x} ${mid} V ${SWIMLANE_HEIGHT}`);
+      svg.append(p);
+    }
+    // Circle
     const outer = drawCircle(x, mid, CIRCLE_RADIUS + 1, row.laneColor, CIRCLE_STROKE_WIDTH);
     svg.append(outer);
     if (row.isCurrent) {
-      // Hollow: second circle filled with background (current-branch tip)
       const inner = drawCircle(x, mid, CIRCLE_RADIUS - 1, row.laneColor);
       svg.append(inner);
     }
@@ -267,8 +296,31 @@ function buildRowSvg(row: RowModel, laneCount: number): SVGSVGElement {
 
 // ─── DOM rendering ───────────────────────────────────────────────────────
 
+const BUILD_TAG = 'v0.0.9 build-' + Date.now().toString(36);
+
+function pickReadableTextColor(hex: string): string {
+  // Strip '#', compute luminance, return dark text on light bg and vice versa.
+  const h = hex.replace('#', '');
+  if (h.length !== 6) return '#000';
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return lum > 0.55 ? '#0b0b0b' : '#fafafa';
+}
+
 function render(state: StackState) {
   root.innerHTML = '';
+
+  const tag = document.createElement('div');
+  tag.style.cssText = 'position:sticky;top:0;padding:2px 8px;font-size:10px;color:var(--vscode-descriptionForeground);background:var(--vscode-sideBar-background);z-index:10;opacity:0.7;';
+  tag.textContent = BUILD_TAG;
+  root.appendChild(tag);
+
+  const debugLine = document.createElement('div');
+  debugLine.style.cssText = 'padding:2px 8px;font-size:10px;color:#0f0;background:#002200;z-index:10;';
+  root.appendChild(debugLine);
+  let labelsRendered = 0;
 
   if (state.error) {
     const e = document.createElement('div');
@@ -303,16 +355,39 @@ function render(state: StackState) {
     rowEl.appendChild(graphContainer);
 
     if (row.kind === 'commit' && row.isBranchTip) {
+      labelsRendered++;
       const labels = document.createElement('div');
       labels.className = 'label-container';
+      labels.style.cssText = 'display:flex;flex-shrink:0;margin-left:6px;gap:4px;';
       const branchLabel = document.createElement('span');
       branchLabel.className = 'label branch';
-      if (row.isCurrent) branchLabel.classList.add('current');
-      const icon = document.createElement('span');
-      icon.className = 'codicon codicon-git-branch';
-      branchLabel.appendChild(icon);
+      const isCurrent = row.isCurrent;
+      if (isCurrent) branchLabel.classList.add('current');
+      // Teapot-style: neutral outlined pill for all, solid accent for current.
+      const style = isCurrent
+        ? `
+            background:var(--vscode-button-background, #0e639c);
+            color:var(--vscode-button-foreground, #ffffff);
+            border:1px solid var(--vscode-button-background, #0e639c);
+            font-weight:600;
+          `
+        : `
+            background:var(--vscode-button-secondaryBackground, #3a3d41);
+            color:var(--vscode-button-secondaryForeground, #e0e0e0);
+            border:1px solid var(--vscode-button-secondaryBackground, #3a3d41);
+            font-weight:400;
+          `;
+      branchLabel.style.cssText = `
+        display:inline-flex;align-items:center;gap:4px;
+        padding:0 6px;height:16px;line-height:14px;border-radius:4px;
+        font-size:11px;
+        max-width:260px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+        ${style}
+      `;
       const labelText = document.createElement('span');
       labelText.textContent = row.branchName;
+      labelText.style.overflow = 'hidden';
+      labelText.style.textOverflow = 'ellipsis';
       branchLabel.appendChild(labelText);
       labels.appendChild(branchLabel);
       rowEl.appendChild(labels);
@@ -321,8 +396,8 @@ function render(state: StackState) {
     const subject = document.createElement('span');
     subject.className = 'subject';
     if (row.kind === 'commit' && row.commit) {
-      subject.textContent = row.commit.subject;
-      subject.title = `${row.commit.sha.slice(0, 7)}  ${row.commit.subject}\n${row.commit.author}`;
+      subject.textContent = row.commit.message;
+      subject.title = `${row.commit.sha.slice(0, 7)}  ${row.commit.message}\n${row.commit.author}`;
     } else if (row.kind === 'branch-header') {
       subject.textContent = '';
     }
@@ -330,4 +405,6 @@ function render(state: StackState) {
 
     root.appendChild(rowEl);
   }
+
+  debugLine.textContent = `DEBUG: branches=${state.branches.length} rows=${rows.length} lanes=${laneCount} labels=${labelsRendered}`;
 }

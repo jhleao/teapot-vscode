@@ -70,7 +70,7 @@ export class GitUtils {
     const args = [
       'log',
       range,
-      `--format=%H%x1f%s%x1f%an%x1f%at`,
+      `--format=%H%x1f%s%x1f%an%x1f%at%x1f%P`,
       '--no-merges',
       '-n',
       '200',
@@ -85,12 +85,14 @@ export class GitUtils {
       .split('\n')
       .filter(Boolean)
       .map((line) => {
-        const [sha, subject, author, at] = line.split('\x1f');
+        const [sha, message, author, at, parents] = line.split('\x1f');
+        const parentSha = (parents ?? '').split(' ').filter(Boolean)[0] ?? '';
         return {
           sha,
-          subject: subject ?? '',
+          message: message ?? '',
           author: author ?? '',
           timeMs: parseInt(at, 10) * 1000,
+          parentSha,
         };
       });
   }
@@ -160,17 +162,23 @@ export class GitUtils {
           const parent = parents.get(b.name) ?? null;
           const parentHead = parent ? branches.find((x) => x.name === parent)?.head ?? null : null;
           const isTrunk = b.name === trunk;
+          const baseSha = parentHead
+            ? (await GitUtils.mergeBase(repoRoot, b.head, parentHead)) ?? parentHead
+            : b.head;
           const commits = isTrunk
             ? (await GitUtils.logRange(repoRoot, null, b.head)).slice(0, 5)
             : await GitUtils.logRange(repoRoot, parentHead, b.head);
           return {
-            name: b.name,
+            ref: b.name,
             headSha: b.head,
+            baseSha,
             parent,
             isTrunk,
+            isRemote: false,
             isCurrent: b.name === current,
-            commits,
             children: (children.get(b.name) ?? []).slice(),
+            ownedShas: commits.map((c) => c.sha),
+            commits,
           };
         })
       );
