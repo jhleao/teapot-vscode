@@ -1,0 +1,63 @@
+{
+  "name": "teapot-vscode",
+  "displayName": "Teapot",
+  "description": "Stacked branches visualizer, native inside VSCode",
+  "version": "0.0.1",
+  "publisher": "jhleao",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["SCM Providers", "Visualization"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "teapot",
+          "title": "Teapot",
+          "icon": "resources/teapot.svg"
+        }
+      ]
+    },
+    "views": {
+      "teapot": [
+        {
+          "type": "webview",
+          "id": "teapot.stackView",
+          "name": "Stack",
+          "contextualTitle": "Teapot"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "teapot.refresh",
+        "title": "Teapot: Refresh",
+        "icon": "$(refresh)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "teapot.refresh",
+          "when": "view == teapot.stackView",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "package": "vsce package --no-dependencies",
+    "vscode:prepublish": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.24.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.4.0"
+  }
+}
