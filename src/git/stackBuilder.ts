@@ -259,7 +259,14 @@ async function inferParentRef(
       continue;
     }
 
-    if (!bestCandidate || distance < bestCandidate.distance) {
+    // On ties, prefer trunk. Otherwise co-located branch heads can produce a
+    // degenerate 0-commit parent that hides its children in the layout.
+    const candidateIsTrunk = candidate.name === trunk;
+    if (
+      !bestCandidate ||
+      distance < bestCandidate.distance ||
+      (distance === bestCandidate.distance && candidateIsTrunk)
+    ) {
       bestCandidate = { name: candidate.name, distance };
     }
   }

@@ -42,6 +42,39 @@ describe('GitStackBuilder', () => {
   );
 
   it(
+    'prefers trunk as parent when a non-trunk branch points to the same commit',
+    async () => {
+      const repoDir = mkdtempSync(join(tmpdir(), 'teapot-vscode-stack-builder-'));
+      tempDirs.push(repoDir);
+
+      git(repoDir, ['init', '--quiet', '-b', 'main']);
+      git(repoDir, ['config', 'user.name', 'Teapot Tests']);
+      git(repoDir, ['config', 'user.email', 'teapot@example.com']);
+      commitFile(repoDir, 'trunk.txt', 'trunk');
+
+      // Non-trunk branch pointing at the same commit as main. Sorts
+      // alphabetically before "main" so we exercise the tiebreak path.
+      git(repoDir, ['branch', 'chore/colocated-with-main']);
+
+      git(repoDir, ['checkout', '--quiet', '-b', 'feature']);
+      commitFile(repoDir, 'feature.txt', 'feature');
+
+      git(repoDir, ['checkout', '--quiet', 'main']);
+
+      const state = await GitStackBuilder.build(repoDir);
+      const branchesByRef = new Map(state.branches.map((branch) => [branch.ref, branch]));
+
+      expect(state.error).toBeNull();
+      expect(branchesByRef.get('feature')?.parentRef).toBe('main');
+      expect(branchesByRef.get('chore/colocated-with-main')?.parentRef).toBe('main');
+      expect(branchesByRef.get('main')?.childRefs).toEqual(
+        expect.arrayContaining(['feature', 'chore/colocated-with-main'])
+      );
+    },
+    15_000
+  );
+
+  it(
     'loads enough trunk history to keep older direct branch fork points available',
     async () => {
     const repoDir = mkdtempSync(join(tmpdir(), 'teapot-vscode-stack-builder-'));
