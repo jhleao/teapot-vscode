@@ -233,6 +233,25 @@ body {
   font-weight: 600;
 }
 
+.label.worktree {
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  border: 1px solid
+    color-mix(in srgb, var(--vscode-descriptionForeground) 35%, transparent);
+  gap: 3px;
+  padding: 0 5px;
+}
+
+.label.worktree .label-text {
+  max-width: 96px;
+}
+
+.label-icon {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+}
+
 .label-text {
   overflow: hidden;
   text-overflow: ellipsis;

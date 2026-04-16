@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -13,6 +13,33 @@ describe('GitStackBuilder', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it(
+    'attaches the worktree path only to branches checked out in a non-current worktree',
+    async () => {
+      const repoDir = mkdtempSync(join(tmpdir(), 'teapot-vscode-stack-builder-'));
+      tempDirs.push(repoDir);
+
+      git(repoDir, ['init', '--quiet', '-b', 'main']);
+      git(repoDir, ['config', 'user.name', 'Teapot Tests']);
+      git(repoDir, ['config', 'user.email', 'teapot@example.com']);
+      commitFile(repoDir, 'trunk.txt', 'trunk');
+
+      git(repoDir, ['branch', 'feature']);
+
+      const linkedWorktreeDir = join(tmpdir(), `teapot-vscode-linked-wt-${Date.now()}`);
+      tempDirs.push(linkedWorktreeDir);
+      git(repoDir, ['worktree', 'add', linkedWorktreeDir, 'feature']);
+
+      const state = await GitStackBuilder.build(repoDir);
+      const branchesByRef = new Map(state.branches.map((branch) => [branch.ref, branch]));
+
+      expect(state.error).toBeNull();
+      expect(branchesByRef.get('main')?.worktreePath).toBeNull();
+      expect(branchesByRef.get('feature')?.worktreePath).toBe(realpathSync(linkedWorktreeDir));
+    },
+    15_000
+  );
 
   it(
     'loads enough trunk history to keep older direct branch fork points available',

@@ -17,6 +17,7 @@ describe('layoutRows', () => {
           isTrunk: true,
           isRemote: false,
           isCurrent: false,
+          worktreePath: null,
         },
         {
           ref: 'feature',
@@ -32,6 +33,7 @@ describe('layoutRows', () => {
           isTrunk: false,
           isRemote: false,
           isCurrent: false,
+          worktreePath: null,
         },
         {
           ref: 'fixup',
@@ -44,6 +46,7 @@ describe('layoutRows', () => {
           isTrunk: false,
           isRemote: false,
           isCurrent: true,
+          worktreePath: null,
         },
       ],
       trunk: 'main',
@@ -80,6 +83,7 @@ describe('layoutRows', () => {
           isTrunk: true,
           isRemote: false,
           isCurrent: false,
+          worktreePath: null,
         },
         {
           ref: 'aaa-feature',
@@ -92,6 +96,7 @@ describe('layoutRows', () => {
           isTrunk: false,
           isRemote: false,
           isCurrent: false,
+          worktreePath: null,
         },
         {
           ref: 'zzz-feature',
@@ -104,6 +109,7 @@ describe('layoutRows', () => {
           isTrunk: false,
           isRemote: false,
           isCurrent: true,
+          worktreePath: null,
         },
       ],
       trunk: 'main',
@@ -140,6 +146,7 @@ describe('layoutRows', () => {
           isTrunk: true,
           isRemote: false,
           isCurrent: false,
+          worktreePath: null,
         },
         {
           ref: 'future-feature',
@@ -152,6 +159,7 @@ describe('layoutRows', () => {
           isTrunk: false,
           isRemote: false,
           isCurrent: false,
+          worktreePath: null,
         },
         {
           ref: 'legacy-feature',
@@ -164,6 +172,7 @@ describe('layoutRows', () => {
           isTrunk: false,
           isRemote: false,
           isCurrent: false,
+          worktreePath: null,
         },
       ],
       trunk: 'main',
@@ -210,6 +219,7 @@ describe('layoutRows', () => {
           isTrunk: true,
           isRemote: false,
           isCurrent: false,
+          worktreePath: null,
         },
         {
           ref: 'feature',
@@ -225,6 +235,7 @@ describe('layoutRows', () => {
           isTrunk: false,
           isRemote: false,
           isCurrent: false,
+          worktreePath: null,
         },
         {
           ref: 'fixup',
@@ -237,6 +248,7 @@ describe('layoutRows', () => {
           isTrunk: false,
           isRemote: false,
           isCurrent: true,
+          worktreePath: null,
         },
       ],
       trunk: 'main',
@@ -278,6 +290,7 @@ describe('layoutRows', () => {
           isTrunk: true,
           isRemote: false,
           isCurrent: true,
+          worktreePath: null,
         },
         {
           ref: 'feature',
@@ -290,6 +303,7 @@ describe('layoutRows', () => {
           isTrunk: false,
           isRemote: false,
           isCurrent: false,
+          worktreePath: null,
         },
       ],
       trunk: 'main',

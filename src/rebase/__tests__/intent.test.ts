@@ -41,6 +41,7 @@ describe('rebase intent helpers', () => {
       isTrunk: false,
       isRemote: false,
       isCurrent: false,
+      worktreePath: null,
     });
 
     expect(createRebaseIntent(state, 'alias', 'm3')).toBeNull();
@@ -81,6 +82,7 @@ function createState(): StackState {
         isTrunk: true,
         isRemote: false,
         isCurrent: true,
+        worktreePath: null,
       },
       {
         ref: 'feature',
@@ -96,6 +98,7 @@ function createState(): StackState {
         isTrunk: false,
         isRemote: false,
         isCurrent: false,
+        worktreePath: null,
       },
       {
         ref: 'fixup',
@@ -108,6 +111,7 @@ function createState(): StackState {
         isTrunk: false,
         isRemote: false,
         isCurrent: false,
+        worktreePath: null,
       },
     ],
     trunk: 'main',

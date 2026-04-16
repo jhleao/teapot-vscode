@@ -1,5 +1,5 @@
 import type { StackBranch, StackState } from '../protocol';
-import { GitClient, type LocalBranchHead } from './gitClient';
+import { GitClient, type LocalBranchHead, type WorktreeInfo } from './gitClient';
 import { selectTrunk } from './trunk';
 
 const DEFAULT_TRUNK_COMMIT_LIMIT = 200;
@@ -32,15 +32,17 @@ export class GitStackBuilder {
     const repoRoot = git.getRepoRoot();
 
     try {
-      const [branches, current] = await Promise.all([
+      const [branches, current, worktrees] = await Promise.all([
         git.listLocalBranches(),
         git.getCurrentBranch(),
+        git.listWorktrees(),
       ]);
       const queries = createGitStackQueries(git);
       const trunk = selectTrunk(branches.map((branch) => branch.name));
       const topology = await resolveBranchTopology(queries, branches, trunk);
       const childRefs = buildChildIndex(topology);
       const trunkCommitLimit = await determineTrunkCommitLimit(queries, topology, trunk);
+      const worktreePathByBranchRef = buildWorktreePathIndex(worktrees, repoRoot);
 
       const stackBranches = await Promise.all(
         topology.map(async ({ branch, parentRef, parentHeadSha, baseSha }) => {
@@ -54,6 +56,7 @@ export class GitStackBuilder {
             current,
             trunk,
             trunkCommitLimit,
+            worktreePath: worktreePathByBranchRef.get(branch.name) ?? null,
           });
         })
       );
@@ -85,6 +88,7 @@ async function createStackBranch(params: {
   current: string | null;
   trunk: string | null;
   trunkCommitLimit: number;
+  worktreePath: string | null;
 }): Promise<StackBranch> {
   const {
     git,
@@ -96,6 +100,7 @@ async function createStackBranch(params: {
     current,
     trunk,
     trunkCommitLimit,
+    worktreePath,
   } = params;
   const isTrunk = branch.name === trunk;
 
@@ -116,7 +121,26 @@ async function createStackBranch(params: {
     isTrunk,
     isRemote: false,
     isCurrent: branch.name === current,
+    worktreePath,
   };
+}
+
+function buildWorktreePathIndex(
+  worktrees: WorktreeInfo[],
+  repoRoot: string
+): Map<string, string> {
+  const index = new Map<string, string>();
+
+  for (const worktree of worktrees) {
+    if (!worktree.branch || worktree.path === repoRoot) {
+      continue;
+    }
+    if (!index.has(worktree.branch)) {
+      index.set(worktree.branch, worktree.path);
+    }
+  }
+
+  return index;
 }
 
 async function resolveBranchTopology(

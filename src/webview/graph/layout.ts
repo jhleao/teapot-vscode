@@ -33,6 +33,7 @@ export interface RowModel {
   rebaseStatus: 'prompting' | 'idle' | null;
   showsRebaseActions: boolean;
   isDraggable: boolean;
+  worktreePath: string | null;
 }
 
 export function layoutRows(state: StackState): RowModel[] {
@@ -102,6 +103,7 @@ export function layoutRows(state: StackState): RowModel[] {
         rebaseStatus: getRebaseStatus(branch.headSha, promptingShas, idleShas),
         showsRebaseActions: actionCommitSha === branch.headSha,
         isDraggable: !branch.isTrunk && branch.ownedShas.length > 0,
+        worktreePath: branch.worktreePath,
       });
     }
 
@@ -137,6 +139,7 @@ export function layoutRows(state: StackState): RowModel[] {
         rebaseStatus: getRebaseStatus(commit.sha, promptingShas, idleShas),
         showsRebaseActions: actionCommitSha === commit.sha,
         isDraggable: isBranchTip && !branch.isTrunk && branch.ownedShas.length > 0,
+        worktreePath: isBranchTip ? branch.worktreePath : null,
       });
     }
 
@@ -155,6 +158,7 @@ export function layoutRows(state: StackState): RowModel[] {
         rebaseStatus: null,
         showsRebaseActions: false,
         isDraggable: false,
+        worktreePath: null,
       });
     }
   };

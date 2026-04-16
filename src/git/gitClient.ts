@@ -10,6 +10,11 @@ export interface LocalBranchHead {
   headSha: string;
 }
 
+export interface WorktreeInfo {
+  path: string;
+  branch: string | null;
+}
+
 export class GitClient {
   private constructor(private readonly repoRoot: string) {}
 
@@ -50,6 +55,15 @@ export class GitClient {
         const [name, headSha] = line.split('\t');
         return { name, headSha };
       });
+  }
+
+  async listWorktrees(): Promise<WorktreeInfo[]> {
+    try {
+      const stdout = await this.run(['worktree', 'list', '--porcelain']);
+      return parseWorktreePorcelain(stdout);
+    } catch {
+      return [];
+    }
   }
 
   async mergeBase(left: string, right: string): Promise<string | null> {
@@ -149,6 +163,29 @@ export class GitClient {
 async function runGit(cwd: string, args: string[]): Promise<string> {
   const { stdout } = await exec('git', args, { cwd, maxBuffer: GIT_EXEC_BUFFER_BYTES });
   return stdout;
+}
+
+export function parseWorktreePorcelain(stdout: string): WorktreeInfo[] {
+  const worktrees: WorktreeInfo[] = [];
+
+  for (const block of stdout.split(/\n\n+/)) {
+    let path = '';
+    let branch: string | null = null;
+
+    for (const line of block.split('\n')) {
+      if (line.startsWith('worktree ')) {
+        path = line.slice('worktree '.length);
+      } else if (line.startsWith('branch ')) {
+        branch = line.slice('branch '.length).replace(/^refs\/heads\//, '');
+      }
+    }
+
+    if (path) {
+      worktrees.push({ path, branch });
+    }
+  }
+
+  return worktrees;
 }
 
 function parseCommitLine(line: string): Commit {

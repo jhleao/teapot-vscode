@@ -85,7 +85,7 @@ function renderRow(
   rowElement.append(graphContainer);
 
   if (row.kind === 'commit' && row.isBranchTip) {
-    rowElement.append(createBranchLabel(row.branchName, row.isCurrent));
+    rowElement.append(createRowLabels(row.branchName, row.isCurrent, row.worktreePath));
   }
 
   const subject = document.createElement('span');
@@ -109,10 +109,21 @@ function renderRow(
   return rowElement;
 }
 
-function createBranchLabel(branchName: string, isCurrent: boolean): HTMLElement {
+function createRowLabels(
+  branchName: string,
+  isCurrent: boolean,
+  worktreePath: string | null
+): HTMLElement {
   const container = document.createElement('div');
   container.className = 'label-container';
+  container.append(createBranchLabel(branchName, isCurrent));
+  if (worktreePath) {
+    container.append(createWorktreeLabel(worktreePath));
+  }
+  return container;
+}
 
+function createBranchLabel(branchName: string, isCurrent: boolean): HTMLElement {
   const label = document.createElement('span');
   label.className = 'label branch';
   if (isCurrent) {
@@ -125,9 +136,39 @@ function createBranchLabel(branchName: string, isCurrent: boolean): HTMLElement 
   text.textContent = branchName;
 
   label.append(text);
-  container.append(label);
+  return label;
+}
 
-  return container;
+function createWorktreeLabel(worktreePath: string): HTMLElement {
+  const label = document.createElement('span');
+  label.className = 'label worktree';
+  label.title = worktreePath;
+
+  const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  icon.setAttribute('class', 'label-icon');
+  icon.setAttribute('viewBox', '0 0 24 24');
+  icon.setAttribute('fill', 'none');
+  icon.setAttribute('stroke', 'currentColor');
+  icon.setAttribute('stroke-width', '1.75');
+  icon.setAttribute('stroke-linecap', 'round');
+  icon.setAttribute('stroke-linejoin', 'round');
+  icon.setAttribute('aria-hidden', 'true');
+
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', 'M12 21v-6m0 0l-3-3m3 3l3-3m-3-3V3m0 9l-6-6m6 6l6-6');
+  icon.append(path);
+
+  const text = document.createElement('span');
+  text.className = 'label-text';
+  text.textContent = basename(worktreePath);
+
+  label.append(icon, text);
+  return label;
+}
+
+function basename(path: string): string {
+  const parts = path.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] ?? path;
 }
 
 function createEmptyState(message: string, isError = false): HTMLElement {

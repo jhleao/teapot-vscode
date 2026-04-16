@@ -47,6 +47,7 @@ describe('dragAndDrop helpers', () => {
           isTrunk: true,
           isRemote: false,
           isCurrent: true,
+          worktreePath: null,
         },
         {
           ref: 'feature',
@@ -59,6 +60,7 @@ describe('dragAndDrop helpers', () => {
           isTrunk: false,
           isRemote: false,
           isCurrent: false,
+          worktreePath: null,
         },
         {
           ref: 'fixup',
@@ -71,6 +73,7 @@ describe('dragAndDrop helpers', () => {
           isTrunk: false,
           isRemote: false,
           isCurrent: false,
+          worktreePath: null,
         },
       ],
       trunk: 'main',

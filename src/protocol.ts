@@ -17,6 +17,7 @@ export interface StackBranch {
   isTrunk: boolean;
   isRemote: boolean;
   isCurrent: boolean;
+  worktreePath: string | null;
 }
 
 export interface RebaseIntentNode {
