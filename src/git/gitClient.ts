@@ -10,19 +10,41 @@ export interface LocalBranchHead {
   headSha: string;
 }
 
+export interface LocalBranchSnapshot {
+  branches: LocalBranchHead[];
+  currentBranch: string | null;
+}
+
 export interface WorktreeInfo {
   path: string;
   branch: string | null;
 }
 
+export interface CommitTopologyEntry {
+  sha: string;
+  parentShas: string[];
+}
+
 export class GitClient {
+  private static readonly repoRootByCwd = new Map<string, string>();
+
   private constructor(private readonly repoRoot: string) {}
 
   static async open(cwd: string): Promise<GitClient | null> {
+    const cachedRepoRoot = GitClient.repoRootByCwd.get(cwd);
+    if (cachedRepoRoot) {
+      return new GitClient(cachedRepoRoot);
+    }
+
     try {
       const stdout = await runGit(cwd, ['rev-parse', '--show-toplevel']);
       const repoRoot = stdout.trim();
-      return repoRoot ? new GitClient(repoRoot) : null;
+      if (!repoRoot) {
+        return null;
+      }
+
+      GitClient.repoRootByCwd.set(cwd, repoRoot);
+      return new GitClient(repoRoot);
     } catch {
       return null;
     }
@@ -42,19 +64,17 @@ export class GitClient {
   }
 
   async listLocalBranches(): Promise<LocalBranchHead[]> {
+    return (await this.listLocalBranchesSnapshot()).branches;
+  }
+
+  async listLocalBranchesSnapshot(): Promise<LocalBranchSnapshot> {
     const stdout = await this.run([
       'for-each-ref',
-      '--format=%(refname:short)%09%(objectname)',
+      '--format=%(if)%(HEAD)%(then)*%(end)%(refname:short)%09%(objectname)',
       'refs/heads/',
     ]);
 
-    return stdout
-      .split('\n')
-      .filter(Boolean)
-      .map((line) => {
-        const [name, headSha] = line.split('\t');
-        return { name, headSha };
-      });
+    return parseLocalBranchSnapshot(stdout);
   }
 
   async listWorktrees(): Promise<WorktreeInfo[]> {
@@ -98,10 +118,7 @@ export class GitClient {
         '--format=%H%x1f%s%x1f%an%x1f%at%x1f%P',
       ]);
 
-      return stdout
-        .split('\n')
-        .filter(Boolean)
-        .map((line) => parseCommitLine(line));
+      return readNonEmptyLines(stdout).map((line) => parseCommitLine(line));
     } catch {
       return [];
     }
@@ -123,10 +140,17 @@ export class GitClient {
       range,
     ]);
 
-    return stdout
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean);
+    return readTrimmedNonEmptyLines(stdout);
+  }
+
+  async listCommitTopology(headShas: string[]): Promise<CommitTopologyEntry[]> {
+    if (headShas.length === 0) {
+      return [];
+    }
+
+    const stdout = await this.run(['rev-list', '--parents', '--topo-order', ...headShas]);
+
+    return readTrimmedNonEmptyLines(stdout).map((line) => parseCommitTopologyLine(line));
   }
 
   async revParse(ref: string): Promise<string> {
@@ -217,6 +241,21 @@ export function parseWorktreePorcelain(stdout: string): WorktreeInfo[] {
   return worktrees;
 }
 
+export function parseLocalBranchSnapshot(stdout: string): LocalBranchSnapshot {
+  let currentBranch: string | null = null;
+  const branches = readNonEmptyLines(stdout).map((line) => {
+    const [rawName = '', headSha = ''] = line.split('\t');
+    const isCurrent = rawName.startsWith('*');
+    const name = isCurrent ? rawName.slice(1) : rawName;
+    if (isCurrent) {
+      currentBranch = name || null;
+    }
+    return { name, headSha };
+  });
+
+  return { branches, currentBranch };
+}
+
 function parseCommitLine(line: string): Commit {
   const [sha = '', message = '', author = '', authoredAt = '', parents = ''] = line.split('\x1f');
   const [parentSha = ''] = parents.split(' ');
@@ -228,4 +267,29 @@ function parseCommitLine(line: string): Commit {
     timeMs: Number.parseInt(authoredAt, 10) * 1000,
     parentSha,
   };
+}
+
+function parseCommitTopologyLine(line: string): CommitTopologyEntry {
+  const [sha = '', ...parentShas] = line.split(' ');
+  return {
+    sha,
+    parentShas,
+  };
+}
+
+function readNonEmptyLines(stdout: string): string[] {
+  return stdout.split('\n').filter((line) => line.length > 0);
+}
+
+function readTrimmedNonEmptyLines(stdout: string): string[] {
+  const lines: string[] = [];
+
+  for (const line of stdout.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed) {
+      lines.push(trimmed);
+    }
+  }
+
+  return lines;
 }

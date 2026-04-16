@@ -3,7 +3,7 @@ import { basename, dirname, join } from 'node:path';
 import * as vscode from 'vscode';
 import { GitClient } from '../git/gitClient';
 import { PeacockColorUtils } from '../git/peacockColor';
-import { GitStackBuilder } from '../git/stackBuilder';
+import { GitStackStateLoader } from '../git/stackState/loader';
 import { WorktreeNamingUtils } from '../git/worktreeNaming';
 import type { HostToWebviewMessage, RebaseIntent, StackState, WebviewToHostMessage } from '../protocol';
 import { GitRebaseExecutor } from '../rebase/executor';
@@ -19,8 +19,11 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   private gitWatcher: GitRefsWatcher | undefined;
   private watchedRepoRoot: string | null = null;
   private cachedStackState: StackState | null = null;
+  private cachedWorkspaceRoot: string | null = null;
   private pendingRebase: RebaseIntent | null = null;
   private operationChain: Promise<void> = Promise.resolve();
+  private refreshTask: Promise<void> | null = null;
+  private refreshPending = false;
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.disposables.push(
@@ -82,13 +85,19 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   }
 
   async refresh(): Promise<void> {
-    if (!this.view) {
+    this.refreshPending = true;
+    if (this.refreshTask) {
+      await this.refreshTask;
       return;
     }
 
-    const workspaceRoot = this.getWorkspaceRoot();
-    const state = await this.loadStackState(workspaceRoot);
-    await this.presentState(state, workspaceRoot);
+    this.refreshTask = this.runRefreshLoop();
+
+    try {
+      await this.refreshTask;
+    } finally {
+      this.refreshTask = null;
+    }
   }
 
   dispose(): void {
@@ -147,7 +156,9 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   private disposeViewState(): void {
     this.disposeGitWatcher();
     this.cachedStackState = null;
+    this.cachedWorkspaceRoot = null;
     this.pendingRebase = null;
+    this.refreshPending = false;
     vscode.Disposable.from(...this.viewDisposables).dispose();
     this.viewDisposables.length = 0;
     this.view = undefined;
@@ -439,6 +450,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
   private async loadStackState(workspaceRoot: string | null): Promise<StackState> {
     if (!workspaceRoot) {
+      this.cachedWorkspaceRoot = null;
       this.cachedStackState = {
         branches: [],
         trunk: null,
@@ -450,7 +462,8 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       return this.cachedStackState;
     }
 
-    this.cachedStackState = await GitStackBuilder.build(workspaceRoot);
+    this.cachedWorkspaceRoot = workspaceRoot;
+    this.cachedStackState = await GitStackStateLoader.load(workspaceRoot);
     return this.cachedStackState;
   }
 
@@ -478,13 +491,11 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   }
 
   private getCachedStackState(workspaceRoot: string | null): StackState | null {
-    if (!workspaceRoot || !this.cachedStackState) {
+    if (!workspaceRoot || !this.cachedStackState || this.cachedWorkspaceRoot !== workspaceRoot) {
       return null;
     }
 
-    return this.cachedStackState.repoRoot === workspaceRoot || this.cachedStackState.repoRoot == null
-      ? this.cachedStackState
-      : null;
+    return this.cachedStackState;
   }
 
   private async getStateForUiInteraction(workspaceRoot: string | null): Promise<StackState> {
@@ -493,6 +504,20 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     }
 
     return this.getCachedStackState(workspaceRoot) ?? this.loadStackState(workspaceRoot);
+  }
+
+  private async runRefreshLoop(): Promise<void> {
+    while (this.refreshPending) {
+      this.refreshPending = false;
+
+      if (!this.view) {
+        return;
+      }
+
+      const workspaceRoot = this.getWorkspaceRoot();
+      const state = await this.loadStackState(workspaceRoot);
+      await this.presentState(state, workspaceRoot);
+    }
   }
 }
 

@@ -24,15 +24,13 @@ export function renderStackView(
   state: StackState,
   options: RenderStackViewOptions
 ): void {
-  root.replaceChildren();
-
   if (state.error) {
-    root.append(createEmptyState(state.error, true));
+    root.replaceChildren(createEmptyState(state.error, true));
     return;
   }
 
   if (state.branches.length === 0) {
-    root.append(createEmptyState('No local branches found.'));
+    root.replaceChildren(createEmptyState('No local branches found.'));
     return;
   }
 
@@ -44,7 +42,7 @@ export function renderStackView(
     fragment.append(renderRow(row, pendingRebase, options));
   }
 
-  root.append(fragment);
+  root.replaceChildren(fragment);
 }
 
 function renderRow(
@@ -274,8 +272,17 @@ function parseHexColor(color: string): [number, number, number] | null {
 }
 
 function basename(path: string): string {
-  const parts = path.split(/[\\/]/).filter(Boolean);
-  return parts[parts.length - 1] ?? path;
+  let lastSeparatorIndex = -1;
+
+  for (let index = path.length - 1; index >= 0; index -= 1) {
+    const character = path[index];
+    if (character === '/' || character === '\\') {
+      lastSeparatorIndex = index;
+      break;
+    }
+  }
+
+  return lastSeparatorIndex >= 0 ? path.slice(lastSeparatorIndex + 1) : path;
 }
 
 function createEmptyState(message: string, isError = false): HTMLElement {

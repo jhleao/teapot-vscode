@@ -1,45 +1,41 @@
 import type { RebaseIntent, RebaseIntentNode, StackBranch, StackState } from '../protocol';
 
+interface BranchLookupIndex {
+  branchByRef: Map<string, StackBranch>;
+  branchRefsByHeadSha: Map<string, string[]>;
+  branchRefsByOwnedSha: Map<string, string[]>;
+  branchRefsByRelevantSha: Map<string, string[]>;
+}
+
+interface RebaseIntentContext {
+  branchLookup: BranchLookupIndex;
+  sourceBranch: StackBranch;
+  subtreeBranchRefs: Set<string>;
+}
+
+export interface RebaseIntentPlanner {
+  createIntent: (targetBaseSha: string) => RebaseIntent | null;
+  isValidTarget: (targetBaseSha: string) => boolean;
+}
+
 export function createRebaseIntent(
   state: StackState,
   branchRef: string,
   targetBaseSha: string
 ): RebaseIntent | null {
-  const branchByRef = indexBranchesByRef(state.branches);
-  const sourceBranch = branchByRef.get(branchRef);
-  if (!sourceBranch) {
-    return null;
-  }
-
-  if (sourceBranch.ownedShas.length === 0) {
-    return null;
-  }
-
-  if (targetBaseSha === sourceBranch.baseSha || targetBaseSha === sourceBranch.headSha) {
-    return null;
-  }
-
-  const subtreeBranchRefs = collectSubtreeBranchRefs(branchRef, branchByRef);
-  const targetBranchRef = resolveIntentTargetBranchRef(state, targetBaseSha, subtreeBranchRefs);
-  if (!targetBranchRef) {
-    return null;
-  }
-
-  return {
-    root: buildIntentNode(sourceBranch, branchByRef, new Set<string>()),
-    targetBaseSha,
-    targetBranchRef,
-  };
+  return createRebaseIntentPlanner(state, branchRef).createIntent(targetBaseSha);
 }
 
 export function isRebaseIntentValid(state: StackState, intent: RebaseIntent): boolean {
-  const branchByRef = indexBranchesByRef(state.branches);
-  if (!branchByRef.has(intent.root.branchRef)) {
+  const branchLookup = createBranchLookupIndex(state.branches);
+  if (!branchLookup.branchByRef.has(intent.root.branchRef)) {
     return false;
   }
 
   const subtreeBranchRefs = collectIntentBranchRefs(intent.root);
-  return resolveIntentTargetBranchRef(state, intent.targetBaseSha, subtreeBranchRefs) !== null;
+  return (
+    resolveIntentTargetBranchRef(branchLookup, intent.targetBaseSha, subtreeBranchRefs) !== null
+  );
 }
 
 export function collectIntentBranchRefs(node: RebaseIntentNode): Set<string> {
@@ -80,34 +76,95 @@ export function indexBranchesByRef(branches: StackBranch[]): Map<string, StackBr
   return new Map(branches.map((branch) => [branch.ref, branch]));
 }
 
+export function createRebaseIntentResolver(
+  state: StackState,
+  branchRef: string
+): (targetBaseSha: string) => RebaseIntent | null {
+  return createRebaseIntentPlanner(state, branchRef).createIntent;
+}
+
+export function createRebaseTargetValidator(
+  state: StackState,
+  branchRef: string
+): (targetBaseSha: string) => boolean {
+  return createRebaseIntentPlanner(state, branchRef).isValidTarget;
+}
+
+export function createRebaseIntentPlanner(
+  state: StackState,
+  branchRef: string
+): RebaseIntentPlanner {
+  const context = createRebaseIntentContext(state, branchRef);
+  if (!context) {
+    return {
+      createIntent: () => null,
+      isValidTarget: () => false,
+    };
+  }
+
+  return {
+    createIntent(targetBaseSha: string): RebaseIntent | null {
+      const targetBranchRef = resolveIntentTargetBranchRefFromContext(context, targetBaseSha);
+      if (!targetBranchRef) {
+        return null;
+      }
+
+      return {
+        root: buildIntentNode(
+          context.sourceBranch,
+          context.branchLookup.branchByRef,
+          new Set<string>()
+        ),
+        targetBaseSha,
+        targetBranchRef,
+      };
+    },
+    isValidTarget(targetBaseSha: string): boolean {
+      return resolveIntentTargetBranchRefFromContext(context, targetBaseSha) !== null;
+    },
+  };
+}
+
 export function findOwningBranchRef(
   branches: StackBranch[],
   targetBaseSha: string,
   excludedBranchRefs: ReadonlySet<string> = new Set<string>()
 ): string | null {
-  const exactHeadMatch = branches.find(
-    (branch) => !excludedBranchRefs.has(branch.ref) && branch.headSha === targetBaseSha
+  return findOwningBranchRefInLookup(
+    createBranchLookupIndex(branches),
+    targetBaseSha,
+    excludedBranchRefs
   );
-  if (exactHeadMatch) {
-    return exactHeadMatch.ref;
-  }
-
-  const ownedMatch = branches.find(
-    (branch) => !excludedBranchRefs.has(branch.ref) && branch.ownedShas.includes(targetBaseSha)
-  );
-  return ownedMatch?.ref ?? null;
 }
 
 function resolveIntentTargetBranchRef(
-  state: StackState,
+  branchLookup: BranchLookupIndex,
   targetBaseSha: string,
   excludedBranchRefs: ReadonlySet<string>
 ): string | null {
-  if (isCommitInBranchSet(state.branches, targetBaseSha, excludedBranchRefs)) {
+  if (isCommitInBranchSet(branchLookup, targetBaseSha, excludedBranchRefs)) {
     return null;
   }
 
-  return findOwningBranchRef(state.branches, targetBaseSha, excludedBranchRefs);
+  return findOwningBranchRefInLookup(branchLookup, targetBaseSha, excludedBranchRefs);
+}
+
+function resolveIntentTargetBranchRefFromContext(
+  context: RebaseIntentContext,
+  targetBaseSha: string
+): string | null {
+  if (
+    targetBaseSha === context.sourceBranch.baseSha ||
+    targetBaseSha === context.sourceBranch.headSha
+  ) {
+    return null;
+  }
+
+  return resolveIntentTargetBranchRef(
+    context.branchLookup,
+    targetBaseSha,
+    context.subtreeBranchRefs
+  );
 }
 
 function buildIntentNode(
@@ -116,19 +173,23 @@ function buildIntentNode(
   visitedBranchRefs: Set<string>
 ): RebaseIntentNode {
   visitedBranchRefs.add(branch.ref);
+  const children: RebaseIntentNode[] = [];
+
+  for (const childRef of branch.childRefs) {
+    const child = branchByRef.get(childRef);
+    if (!child || visitedBranchRefs.has(child.ref)) {
+      continue;
+    }
+
+    children.push(buildIntentNode(child, branchByRef, new Set(visitedBranchRefs)));
+  }
 
   return {
     branchRef: branch.ref,
     headSha: branch.headSha,
     baseSha: branch.baseSha,
     ownedShas: [...branch.ownedShas],
-    children: branch.childRefs
-      .map((childRef) => branchByRef.get(childRef))
-      .filter(
-        (child): child is StackBranch =>
-          child != null && !visitedBranchRefs.has(child.ref)
-      )
-      .map((child) => buildIntentNode(child, branchByRef, new Set(visitedBranchRefs))),
+    children,
   };
 }
 
@@ -158,15 +219,101 @@ function collectSubtreeBranchRefs(
 }
 
 function isCommitInBranchSet(
-  branches: StackBranch[],
+  branchLookup: BranchLookupIndex,
   targetBaseSha: string,
   branchRefs: ReadonlySet<string>
 ): boolean {
-  return branches.some(
-    (branch) =>
-      branchRefs.has(branch.ref) &&
-      (branch.headSha === targetBaseSha ||
-        branch.baseSha === targetBaseSha ||
-        branch.ownedShas.includes(targetBaseSha))
+  return (
+    branchLookup.branchRefsByRelevantSha
+      .get(targetBaseSha)
+      ?.some((branchRef) => branchRefs.has(branchRef)) ?? false
   );
+}
+
+function createBranchLookupIndex(branches: StackBranch[]): BranchLookupIndex {
+  const branchByRef = indexBranchesByRef(branches);
+  const branchRefsByHeadSha = new Map<string, string[]>();
+  const branchRefsByOwnedSha = new Map<string, string[]>();
+  const branchRefsByRelevantSha = new Map<string, string[]>();
+
+  for (const branch of branches) {
+    pushIndexedBranchRef(branchRefsByHeadSha, branch.headSha, branch.ref);
+    pushIndexedBranchRef(branchRefsByRelevantSha, branch.headSha, branch.ref);
+    pushIndexedBranchRef(branchRefsByRelevantSha, branch.baseSha, branch.ref);
+
+    for (const ownedSha of branch.ownedShas) {
+      pushIndexedBranchRef(branchRefsByOwnedSha, ownedSha, branch.ref);
+      pushIndexedBranchRef(branchRefsByRelevantSha, ownedSha, branch.ref);
+    }
+  }
+
+  return {
+    branchByRef,
+    branchRefsByHeadSha,
+    branchRefsByOwnedSha,
+    branchRefsByRelevantSha,
+  };
+}
+
+function createRebaseIntentContext(
+  state: StackState,
+  branchRef: string
+): RebaseIntentContext | null {
+  const branchLookup = createBranchLookupIndex(state.branches);
+  const sourceBranch = branchLookup.branchByRef.get(branchRef);
+  if (!sourceBranch || sourceBranch.ownedShas.length === 0) {
+    return null;
+  }
+
+  return {
+    branchLookup,
+    sourceBranch,
+    subtreeBranchRefs: collectSubtreeBranchRefs(branchRef, branchLookup.branchByRef),
+  };
+}
+
+function findOwningBranchRefInLookup(
+  branchLookup: BranchLookupIndex,
+  targetBaseSha: string,
+  excludedBranchRefs: ReadonlySet<string>
+): string | null {
+  const exactHeadMatch = firstIncludedBranchRef(
+    branchLookup.branchRefsByHeadSha.get(targetBaseSha),
+    excludedBranchRefs
+  );
+  if (exactHeadMatch) {
+    return exactHeadMatch;
+  }
+
+  return (
+    firstIncludedBranchRef(branchLookup.branchRefsByOwnedSha.get(targetBaseSha), excludedBranchRefs) ??
+    null
+  );
+}
+
+function firstIncludedBranchRef(
+  branchRefs: readonly string[] | undefined,
+  excludedBranchRefs: ReadonlySet<string>
+): string | null {
+  if (!branchRefs) {
+    return null;
+  }
+
+  for (const branchRef of branchRefs) {
+    if (!excludedBranchRefs.has(branchRef)) {
+      return branchRef;
+    }
+  }
+
+  return null;
+}
+
+function pushIndexedBranchRef(
+  index: Map<string, string[]>,
+  sha: string,
+  branchRef: string
+): void {
+  const branchRefs = index.get(sha) ?? [];
+  branchRefs.push(branchRef);
+  index.set(sha, branchRefs);
 }

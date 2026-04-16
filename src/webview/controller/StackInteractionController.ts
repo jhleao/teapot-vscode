@@ -1,4 +1,4 @@
-import { createRebaseIntent } from '../../rebase/intent';
+import { createRebaseIntentPlanner } from '../../rebase/intent';
 import { applyRebaseIntentToState } from '../../rebase/project';
 import type {
   HostToWebviewMessage,
@@ -6,7 +6,7 @@ import type {
   WebviewToHostMessage,
 } from '../../protocol';
 import {
-  collectValidDropTargetShas,
+  collectValidDropTargetShasWithPlanner,
   collectDropCandidates,
   type DropCandidate,
   type ValidDropTargetShas,
@@ -17,10 +17,12 @@ import { renderStackView, type PendingActionState } from '../view/render';
 interface DragSession {
   pendingBranchRef: string | null;
   activeBranchRef: string | null;
+  createIntent: ReturnType<typeof createRebaseIntentPlanner>['createIntent'] | null;
   startX: number;
   startY: number;
   targetSha: string | null;
   dropCandidates: DropCandidate[];
+  dropRowsBySha: Map<string, HTMLElement>;
   validDropTargetShas: ValidDropTargetShas;
   initialScrollTop: number;
   lastPointerY: number;
@@ -42,10 +44,12 @@ export class StackInteractionController {
   private readonly drag: DragSession = {
     pendingBranchRef: null,
     activeBranchRef: null,
+    createIntent: null,
     startX: 0,
     startY: 0,
     targetSha: null,
     dropCandidates: [],
+    dropRowsBySha: new Map<string, HTMLElement>(),
     validDropTargetShas: new Set<string>(),
     initialScrollTop: 0,
     lastPointerY: 0,
@@ -179,6 +183,7 @@ export class StackInteractionController {
     const currentState = this.renderedState;
     const activeBranchRef = this.drag.activeBranchRef;
     const targetSha = this.drag.targetSha;
+    const createIntent = this.drag.createIntent;
 
     this.resetDragSession();
 
@@ -191,7 +196,7 @@ export class StackInteractionController {
       return;
     }
 
-    const intent = createRebaseIntent(currentState, activeBranchRef, targetSha);
+    const intent = createIntent?.(targetSha) ?? null;
     if (!intent) {
       this.render();
       return;
@@ -234,13 +239,19 @@ export class StackInteractionController {
   }
 
   private startDragSession(currentState: StackState, branchRef: string): void {
+    const planner = createRebaseIntentPlanner(currentState, branchRef);
     this.drag.activeBranchRef = branchRef;
     this.drag.pendingBranchRef = null;
+    this.drag.createIntent = planner.createIntent;
     this.drag.dropCandidates = collectDropCandidates(this.elements.contentElement);
-    this.drag.validDropTargetShas = collectValidDropTargetShas(
-      currentState,
-      branchRef,
-      this.drag.dropCandidates
+    this.drag.dropRowsBySha = new Map(
+      this.drag.dropCandidates.flatMap((candidate) =>
+        candidate.rowElement ? [[candidate.sha, candidate.rowElement] as const] : []
+      )
+    );
+    this.drag.validDropTargetShas = collectValidDropTargetShasWithPlanner(
+      this.drag.dropCandidates,
+      planner
     );
     this.drag.initialScrollTop = this.elements.viewportElement.scrollTop;
     this.elements.viewportElement.classList.add('dragging');
@@ -323,11 +334,13 @@ export class StackInteractionController {
   private resetDragSession(): void {
     this.drag.pendingBranchRef = null;
     this.drag.activeBranchRef = null;
+    this.drag.createIntent = null;
     this.drag.startX = 0;
     this.drag.startY = 0;
     this.drag.lastPointerY = 0;
-    this.drag.dropCandidates = [];
-    this.drag.validDropTargetShas = new Set<string>();
+    this.drag.dropCandidates.length = 0;
+    this.drag.dropRowsBySha.clear();
+    this.drag.validDropTargetShas.clear();
     this.drag.initialScrollTop = 0;
     this.setDropTarget(null);
     if (this.drag.autoScrollFrame !== null) {
@@ -360,9 +373,7 @@ export class StackInteractionController {
   }
 
   private getCommitRow(commitSha: string): HTMLElement | null {
-    return this.elements.contentElement.querySelector<HTMLElement>(
-      `.row[data-commit-sha="${commitSha}"]`
-    );
+    return this.drag.dropRowsBySha.get(commitSha) ?? null;
   }
 }
 
@@ -381,21 +392,13 @@ function areStackStatesVisuallyEqual(left: StackState, right: StackState): boole
     return false;
   }
 
-  return left.branches.every((branch, index) => {
-    const other = right.branches[index];
-    return (
-      branch.ref === other.ref &&
-      branch.headSha === other.headSha &&
-      branch.baseSha === other.baseSha &&
-      branch.parentRef === other.parentRef &&
-      branch.isCurrent === other.isCurrent &&
-      branch.worktreePath === other.worktreePath &&
-      branch.worktreePeacockColor === other.worktreePeacockColor &&
-      areStringArraysEqual(branch.childRefs, other.childRefs) &&
-      areStringArraysEqual(branch.ownedShas, other.ownedShas) &&
-      areCommitsEqual(branch.commits, other.commits)
-    );
-  });
+  for (let index = 0; index < left.branches.length; index += 1) {
+    if (!areBranchesVisuallyEqual(left.branches[index], right.branches[index])) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function areRebaseIntentsEqual(
@@ -427,28 +430,68 @@ function areIntentNodesEqual(
     return false;
   }
 
-  return left.children.every((child, index) => areIntentNodesEqual(child, right.children[index]));
+  for (let index = 0; index < left.children.length; index += 1) {
+    if (!areIntentNodesEqual(left.children[index], right.children[index])) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function areStringArraysEqual(left: string[], right: string[]): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function areCommitsEqual(
   left: StackState['branches'][number]['commits'],
   right: StackState['branches'][number]['commits']
 ): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  for (let index = 0; index < left.length; index += 1) {
+    const commit = left[index];
+    const other = right[index];
+    if (
+      commit.sha !== other.sha ||
+      commit.message !== other.message ||
+      commit.author !== other.author ||
+      commit.timeMs !== other.timeMs ||
+      commit.parentSha !== other.parentSha
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function areBranchesVisuallyEqual(
+  left: StackState['branches'][number],
+  right: StackState['branches'][number]
+): boolean {
   return (
-    left.length === right.length &&
-    left.every((commit, index) => {
-      const other = right[index];
-      return (
-        commit.sha === other.sha &&
-        commit.message === other.message &&
-        commit.author === other.author &&
-        commit.timeMs === other.timeMs &&
-        commit.parentSha === other.parentSha
-      );
-    })
+    left.ref === right.ref &&
+    left.headSha === right.headSha &&
+    left.baseSha === right.baseSha &&
+    left.parentRef === right.parentRef &&
+    left.isCurrent === right.isCurrent &&
+    left.worktreePath === right.worktreePath &&
+    left.worktreePeacockColor === right.worktreePeacockColor &&
+    areStringArraysEqual(left.childRefs, right.childRefs) &&
+    areStringArraysEqual(left.ownedShas, right.ownedShas) &&
+    areCommitsEqual(left.commits, right.commits)
   );
 }

@@ -8,7 +8,7 @@ const CIRCLE_STROKE_WIDTH = 2;
 const CURVE_RADIUS = 5;
 
 export function renderRowGraph(row: RowModel): SVGSVGElement {
-  const maxLane = Math.max(row.lane, row.parentLane ?? 0, ...row.passThrough.map(({ lane }) => lane));
+  const maxLane = getMaxLane(row);
   const width = SWIMLANE_WIDTH * (maxLane + 2);
   const svg = document.createElementNS(SVG_NS, 'svg');
 
@@ -19,19 +19,9 @@ export function renderRowGraph(row: RowModel): SVGSVGElement {
 
   const laneX = (lane: number): number => SWIMLANE_WIDTH * (lane + 1);
   const midY = SWIMLANE_HEIGHT / 2;
-  const verticalLines = new Map<number, string>(row.passThrough.map(({ lane, color }) => [lane, color]));
-
-  verticalLines.set(row.lane, row.laneColor);
+  appendPassThroughPaths(svg, row, laneX);
 
   if (row.kind === 'commit') {
-    for (const [lane, color] of verticalLines) {
-      if (lane === row.lane) {
-        continue;
-      }
-
-      svg.append(createVerticalPath(laneX(lane), color, 0, SWIMLANE_HEIGHT));
-    }
-
     const currentLaneX = laneX(row.lane);
     if (row.hasTop) {
       svg.append(createVerticalPath(currentLaneX, row.laneColor, 0, midY));
@@ -46,14 +36,6 @@ export function renderRowGraph(row: RowModel): SVGSVGElement {
       svg.append(createCircle(currentLaneX, midY, CIRCLE_RADIUS - 1, row.laneColor));
     }
   } else {
-    for (const [lane, color] of verticalLines) {
-      if (lane === row.lane) {
-        continue;
-      }
-
-      svg.append(createVerticalPath(laneX(lane), color, 0, SWIMLANE_HEIGHT));
-    }
-
     const currentLaneX = laneX(row.lane);
     const parentLaneX = laneX(row.parentLane ?? 0);
     const path = createPath(row.laneColor);
@@ -78,6 +60,39 @@ export function renderRowGraph(row: RowModel): SVGSVGElement {
   }
 
   return svg;
+}
+
+function getMaxLane(row: RowModel): number {
+  let maxLane = Math.max(row.lane, row.parentLane ?? 0);
+
+  for (const { lane } of row.passThrough) {
+    if (lane > maxLane) {
+      maxLane = lane;
+    }
+  }
+
+  return maxLane;
+}
+
+function appendPassThroughPaths(
+  svg: SVGSVGElement,
+  row: RowModel,
+  laneX: (lane: number) => number
+): void {
+  for (const passThrough of row.passThrough) {
+    if (passThrough.lane === row.lane) {
+      continue;
+    }
+
+    svg.append(
+      createVerticalPath(
+        laneX(passThrough.lane),
+        passThrough.color,
+        0,
+        SWIMLANE_HEIGHT
+      )
+    );
+  }
 }
 
 function createVerticalPath(x: number, color: string, fromY: number, toY: number): SVGPathElement {

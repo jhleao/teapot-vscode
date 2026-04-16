@@ -77,44 +77,73 @@ describe('GitStackBuilder', () => {
   it(
     'loads enough trunk history to keep older direct branch fork points available',
     async () => {
-    const repoDir = mkdtempSync(join(tmpdir(), 'teapot-vscode-stack-builder-'));
-    tempDirs.push(repoDir);
+      const repoDir = mkdtempSync(join(tmpdir(), 'teapot-vscode-stack-builder-'));
+      tempDirs.push(repoDir);
 
-    git(repoDir, ['init', '--quiet', '-b', 'main']);
-    git(repoDir, ['config', 'user.name', 'Teapot Tests']);
-    git(repoDir, ['config', 'user.email', 'teapot@example.com']);
+      git(repoDir, ['init', '--quiet', '-b', 'main']);
+      git(repoDir, ['config', 'user.name', 'Teapot Tests']);
+      git(repoDir, ['config', 'user.email', 'teapot@example.com']);
 
-    const trunkCommitShas: string[] = [];
-    for (let index = 1; index <= 8; index += 1) {
-      commitFile(repoDir, `trunk-${index}`, `trunk commit ${index}`);
-      trunkCommitShas.push(revParse(repoDir, 'HEAD'));
-    }
+      const trunkCommitShas: string[] = [];
+      for (let index = 1; index <= 8; index += 1) {
+        commitFile(repoDir, `trunk-${index}`, `trunk commit ${index}`);
+        trunkCommitShas.push(revParse(repoDir, 'HEAD'));
+      }
 
-    const legacyBaseSha = trunkCommitShas[1];
-    if (!legacyBaseSha) {
-      throw new Error('Expected legacy base SHA');
-    }
+      const legacyBaseSha = trunkCommitShas[1];
+      if (!legacyBaseSha) {
+        throw new Error('Expected legacy base SHA');
+      }
 
-    git(repoDir, ['checkout', '--quiet', '-b', 'legacy-feature', legacyBaseSha]);
-    commitFile(repoDir, 'legacy.txt', 'legacy feature');
+      git(repoDir, ['checkout', '--quiet', '-b', 'legacy-feature', legacyBaseSha]);
+      commitFile(repoDir, 'legacy.txt', 'legacy feature');
 
-    git(repoDir, ['checkout', '--quiet', 'main']);
-    const mainHeadBeforeFutureBranch = revParse(repoDir, 'HEAD');
+      git(repoDir, ['checkout', '--quiet', 'main']);
+      const mainHeadBeforeFutureBranch = revParse(repoDir, 'HEAD');
 
-    git(repoDir, ['checkout', '--quiet', '-b', 'future-feature']);
-    commitFile(repoDir, 'future.txt', 'future feature');
+      git(repoDir, ['checkout', '--quiet', '-b', 'future-feature']);
+      commitFile(repoDir, 'future.txt', 'future feature');
 
-    git(repoDir, ['checkout', '--quiet', 'main']);
+      git(repoDir, ['checkout', '--quiet', 'main']);
 
-    const state = await GitStackBuilder.build(repoDir);
-    const branchesByRef = new Map(state.branches.map((branch) => [branch.ref, branch]));
+      const state = await GitStackBuilder.build(repoDir);
+      const branchesByRef = new Map(state.branches.map((branch) => [branch.ref, branch]));
 
-    expect(state.error).toBeNull();
-    expect(branchesByRef.get('legacy-feature')?.baseSha).toBe(legacyBaseSha);
-    expect(branchesByRef.get('future-feature')?.baseSha).toBe(mainHeadBeforeFutureBranch);
-    expect(branchesByRef.get('main')?.commits.some((commit) => commit.sha === legacyBaseSha)).toBe(
-      true
-    );
+      expect(state.error).toBeNull();
+      expect(branchesByRef.get('legacy-feature')?.baseSha).toBe(legacyBaseSha);
+      expect(branchesByRef.get('future-feature')?.baseSha).toBe(mainHeadBeforeFutureBranch);
+      expect(
+        branchesByRef.get('main')?.commits.some((commit) => commit.sha === legacyBaseSha)
+      ).toBe(true);
+    },
+    15_000
+  );
+
+  it(
+    'prefers the nearest ancestor branch head over a farther trunk ancestor',
+    async () => {
+      const repoDir = mkdtempSync(join(tmpdir(), 'teapot-vscode-stack-builder-'));
+      tempDirs.push(repoDir);
+
+      git(repoDir, ['init', '--quiet', '-b', 'main']);
+      git(repoDir, ['config', 'user.name', 'Teapot Tests']);
+      git(repoDir, ['config', 'user.email', 'teapot@example.com']);
+      commitFile(repoDir, 'trunk.txt', 'trunk');
+
+      git(repoDir, ['checkout', '--quiet', '-b', 'feature']);
+      commitFile(repoDir, 'feature.txt', 'feature');
+
+      git(repoDir, ['checkout', '--quiet', '-b', 'fixup']);
+      commitFile(repoDir, 'fixup.txt', 'fixup');
+
+      git(repoDir, ['checkout', '--quiet', 'main']);
+
+      const state = await GitStackBuilder.build(repoDir);
+      const branchesByRef = new Map(state.branches.map((branch) => [branch.ref, branch]));
+
+      expect(state.error).toBeNull();
+      expect(branchesByRef.get('feature')?.parentRef).toBe('main');
+      expect(branchesByRef.get('fixup')?.parentRef).toBe('feature');
     },
     15_000
   );

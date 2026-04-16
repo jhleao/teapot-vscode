@@ -4,8 +4,16 @@ import type { StackBranch, StackState } from '../../protocol';
 const GRAPH_COLOR = 'var(--vscode-descriptionForeground, #858585)';
 const TRUNK_COLOR = 'var(--vscode-descriptionForeground, #858585)';
 const CURRENT_COLOR = 'var(--vscode-focusBorder, var(--vscode-button-background, #007fd4))';
+const EMPTY_LANES: RowLane[] = [];
+const TRUNK_PASS_THROUGH: RowLane[] = [{ lane: 0, color: TRUNK_COLOR }];
 
 type ChildRefsByBaseSha = Map<string, string[]>;
+
+interface LayoutContext {
+  branchesByRef: Map<string, StackBranch>;
+  commitTimesBySha: Map<string, number>;
+  childRefsByParentAndBase: Map<string, ChildRefsByBaseSha>;
+}
 
 export interface RowLane {
   lane: number;
@@ -39,19 +47,9 @@ export interface RowModel {
 }
 
 export function layoutRows(state: StackState): RowModel[] {
-  const branchesByRef = new Map<string, StackBranch>();
-  const commitTimesBySha = new Map<string, number>();
-  for (const branch of state.branches) {
-    branchesByRef.set(branch.ref, branch);
-    for (const commit of branch.commits) {
-      if (!commitTimesBySha.has(commit.sha)) {
-        commitTimesBySha.set(commit.sha, commit.timeMs);
-      }
-    }
-  }
-
-  const childRefsByParentAndBase = createChildRefsByParentAndBase(state.branches);
-
+  const { branchesByRef, commitTimesBySha, childRefsByParentAndBase } = createLayoutContext(
+    state.branches
+  );
   const laneOf = (branchRef: string): number => (branchesByRef.get(branchRef)?.isTrunk ? 0 : 1);
   const colorOf = (branchRef: string): string => {
     const branch = branchesByRef.get(branchRef);
@@ -68,12 +66,7 @@ export function layoutRows(state: StackState): RowModel[] {
     : new Set<string>();
   const idleShas = state.pendingRebase ? collectIdleShas(state.pendingRebase) : new Set<string>();
   const actionCommitSha = state.pendingRebase?.root.headSha ?? null;
-  const rootRefs = state.branches
-    .filter((branch) => !branch.parentRef)
-    .map((branch) => branch.ref)
-    .sort((left, right) =>
-      compareBranchRefsForLayout(left, right, branchesByRef, commitTimesBySha)
-    );
+  const rootRefs = getRootRefs(state.branches, branchesByRef, commitTimesBySha);
 
   const emitBranch = (branchRef: string): void => {
     const branch = branchesByRef.get(branchRef);
@@ -84,7 +77,7 @@ export function layoutRows(state: StackState): RowModel[] {
     const lane = laneOf(branchRef);
     const parentLane = branch.parentRef ? laneOf(branch.parentRef) : undefined;
     const willRenderBranchHeader = parentLane !== undefined && parentLane !== lane;
-    const passThrough = branch.isTrunk ? [] : [{ lane: 0, color: TRUNK_COLOR }];
+    const passThrough = branch.isTrunk ? EMPTY_LANES : TRUNK_PASS_THROUGH;
     const childRefsAtBaseSha = childRefsByParentAndBase.get(branch.ref) ?? new Map();
     const renderedCommits = getRenderedCommits(branch, childRefsAtBaseSha);
     const hasChildrenAbove =
@@ -112,11 +105,7 @@ export function layoutRows(state: StackState): RowModel[] {
     }
 
     for (const [index, commit] of renderedCommits.entries()) {
-      const childRefs = sortChildRefs(
-        childRefsAtBaseSha.get(commit.sha) ?? [],
-        branchesByRef,
-        commitTimesBySha
-      );
+      const childRefs = childRefsAtBaseSha.get(commit.sha) ?? [];
 
       for (const childRef of childRefs) {
         emitBranch(childRef);
@@ -178,27 +167,6 @@ export function layoutRows(state: StackState): RowModel[] {
   return rows;
 }
 
-function createChildRefsByParentAndBase(branches: StackBranch[]): Map<string, ChildRefsByBaseSha> {
-  const childRefsByParentAndBase = new Map<string, ChildRefsByBaseSha>();
-
-  for (const branch of branches) {
-    if (!branch.parentRef) {
-      continue;
-    }
-
-    if (!childRefsByParentAndBase.has(branch.parentRef)) {
-      childRefsByParentAndBase.set(branch.parentRef, new Map());
-    }
-
-    const childRefsByBaseSha = childRefsByParentAndBase.get(branch.parentRef)!;
-    const childRefs = childRefsByBaseSha.get(branch.baseSha) ?? [];
-    childRefs.push(branch.ref);
-    childRefsByBaseSha.set(branch.baseSha, childRefs);
-  }
-
-  return childRefsByParentAndBase;
-}
-
 function sortChildRefs(
   childRefs: string[],
   branchesByRef: Map<string, StackBranch>,
@@ -207,6 +175,71 @@ function sortChildRefs(
   return [...childRefs].sort((left, right) =>
     compareBranchRefsForLayout(left, right, branchesByRef, commitTimesBySha)
   );
+}
+
+function createLayoutContext(branches: StackBranch[]): LayoutContext {
+  const branchesByRef = branchesByRefIndex(branches);
+  const commitTimesBySha = commitTimesByShaIndex(branches);
+  const childRefsByParentAndBase = childRefsByParentAndBaseIndex(
+    branches,
+    branchesByRef,
+    commitTimesBySha
+  );
+
+  return {
+    branchesByRef,
+    commitTimesBySha,
+    childRefsByParentAndBase,
+  };
+}
+
+function branchesByRefIndex(branches: StackBranch[]): Map<string, StackBranch> {
+  return new Map(branches.map((branch) => [branch.ref, branch]));
+}
+
+function commitTimesByShaIndex(branches: StackBranch[]): Map<string, number> {
+  const commitTimesBySha = new Map<string, number>();
+
+  for (const branch of branches) {
+    for (const commit of branch.commits) {
+      if (!commitTimesBySha.has(commit.sha)) {
+        commitTimesBySha.set(commit.sha, commit.timeMs);
+      }
+    }
+  }
+
+  return commitTimesBySha;
+}
+
+function childRefsByParentAndBaseIndex(
+  branches: StackBranch[],
+  branchesByRef: Map<string, StackBranch>,
+  commitTimesBySha: ReadonlyMap<string, number>
+): Map<string, ChildRefsByBaseSha> {
+  const childRefsByParentAndBase = new Map<string, ChildRefsByBaseSha>();
+
+  for (const branch of branches) {
+    if (!branch.parentRef) {
+      continue;
+    }
+
+    const childRefsByBaseSha = childRefsByParentAndBase.get(branch.parentRef) ?? new Map();
+    const childRefs = childRefsByBaseSha.get(branch.baseSha) ?? [];
+    childRefs.push(branch.ref);
+    childRefsByBaseSha.set(branch.baseSha, childRefs);
+    childRefsByParentAndBase.set(branch.parentRef, childRefsByBaseSha);
+  }
+
+  for (const childRefsByBaseSha of childRefsByParentAndBase.values()) {
+    for (const [baseSha, childRefs] of childRefsByBaseSha) {
+      childRefsByBaseSha.set(
+        baseSha,
+        sortChildRefs(childRefs, branchesByRef, commitTimesBySha)
+      );
+    }
+  }
+
+  return childRefsByParentAndBase;
 }
 
 function getRenderedCommits(
@@ -225,7 +258,15 @@ function getRenderedCommits(
     visibleShas.add(baseSha);
   }
 
-  return branch.commits.filter((commit) => visibleShas.has(commit.sha));
+  const renderedCommits: StackBranch['commits'] = [];
+
+  for (const commit of branch.commits) {
+    if (visibleShas.has(commit.sha)) {
+      renderedCommits.push(commit);
+    }
+  }
+
+  return renderedCommits;
 }
 
 function getRebaseStatus(
@@ -295,4 +336,24 @@ function getBranchHeadTime(
   }
 
   return commitTimesBySha.get(branch.headSha) ?? branch.commits[0]?.timeMs ?? 0;
+}
+
+function getRootRefs(
+  branches: StackBranch[],
+  branchesByRef: ReadonlyMap<string, StackBranch>,
+  commitTimesBySha: ReadonlyMap<string, number>
+): string[] {
+  const rootRefs: string[] = [];
+
+  for (const branch of branches) {
+    if (!branch.parentRef) {
+      rootRefs.push(branch.ref);
+    }
+  }
+
+  rootRefs.sort((left, right) =>
+    compareBranchRefsForLayout(left, right, branchesByRef, commitTimesBySha)
+  );
+
+  return rootRefs;
 }

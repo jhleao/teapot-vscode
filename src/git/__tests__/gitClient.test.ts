@@ -1,5 +1,32 @@
 import { describe, expect, it } from 'vitest';
-import { parseWorktreePorcelain } from '../gitClient';
+import { parseLocalBranchSnapshot, parseWorktreePorcelain } from '../gitClient';
+
+describe('parseLocalBranchSnapshot', () => {
+  it('parses branches and marks the current branch from for-each-ref output', () => {
+    const stdout = ['*feature\tabc123', 'main\tdef456', 'fixup\t987654'].join('\n');
+
+    expect(parseLocalBranchSnapshot(stdout)).toEqual({
+      branches: [
+        { name: 'feature', headSha: 'abc123' },
+        { name: 'main', headSha: 'def456' },
+        { name: 'fixup', headSha: '987654' },
+      ],
+      currentBranch: 'feature',
+    });
+  });
+
+  it('returns a null current branch when no branch is marked current', () => {
+    const stdout = ['main\tdef456', 'fixup\t987654'].join('\n');
+
+    expect(parseLocalBranchSnapshot(stdout)).toEqual({
+      branches: [
+        { name: 'main', headSha: 'def456' },
+        { name: 'fixup', headSha: '987654' },
+      ],
+      currentBranch: null,
+    });
+  });
+});
 
 describe('parseWorktreePorcelain', () => {
   it('parses main, linked, detached, and prunable worktree blocks', () => {

@@ -1,8 +1,9 @@
 import type { RebaseIntent, StackBranch, StackState } from '../protocol';
+import { indexBranchesByRef } from './intent';
 
 export function applyRebaseIntentToState(state: StackState, intent: RebaseIntent): StackState {
   const branches = state.branches.map((branch) => cloneBranch(branch));
-  const branchByRef = new Map(branches.map((branch) => [branch.ref, branch]));
+  const branchByRef = indexBranchesByRef(branches);
   const targetParent = branchByRef.get(intent.targetBranchRef ?? '');
   const rootBranch = branchByRef.get(intent.root.branchRef);
 
@@ -23,11 +24,13 @@ export function applyRebaseIntentToState(state: StackState, intent: RebaseIntent
 }
 
 function cloneBranch(branch: StackBranch): StackBranch {
+  const commits = branch.commits.map((commit) => ({ ...commit }));
+
   return {
     ...branch,
     childRefs: [...branch.childRefs],
     ownedShas: [...branch.ownedShas],
-    commits: branch.commits.map((commit) => ({ ...commit })),
+    commits,
   };
 }
 
@@ -45,8 +48,8 @@ function rebuildChildRefs(branches: StackBranch[]): void {
   }
 
   for (const branch of branches) {
-    branch.childRefs = [...(childrenByParent.get(branch.ref) ?? [])].sort((left, right) =>
-      left.localeCompare(right)
-    );
+    const childRefs = childrenByParent.get(branch.ref) ?? [];
+    childRefs.sort((left, right) => left.localeCompare(right));
+    branch.childRefs = [...childRefs];
   }
 }
