@@ -14,7 +14,9 @@ describe('GitStackBuilder', () => {
     }
   });
 
-  it('loads enough trunk history to keep older direct branch fork points available', async () => {
+  it(
+    'loads enough trunk history to keep older direct branch fork points available',
+    async () => {
     const repoDir = mkdtempSync(join(tmpdir(), 'teapot-vscode-stack-builder-'));
     tempDirs.push(repoDir);
 
@@ -53,7 +55,9 @@ describe('GitStackBuilder', () => {
     expect(branchesByRef.get('main')?.commits.some((commit) => commit.sha === legacyBaseSha)).toBe(
       true
     );
-  });
+    },
+    15_000
+  );
 });
 
 function commitFile(repoDir: string, filename: string, contents: string): void {

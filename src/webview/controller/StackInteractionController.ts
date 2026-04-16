@@ -1,0 +1,432 @@
+import { createRebaseIntent } from '../../rebase/intent';
+import { applyRebaseIntentToState } from '../../rebase/project';
+import type {
+  HostToWebviewMessage,
+  StackState,
+  WebviewToHostMessage,
+} from '../../protocol';
+import {
+  collectValidDropTargetShas,
+  collectDropCandidates,
+  type DropCandidate,
+  type ValidDropTargetShas,
+  resolveDropTarget,
+} from '../view/dragAndDrop';
+import { renderStackView, type PendingActionState } from '../view/render';
+
+interface DragSession {
+  pendingBranchRef: string | null;
+  activeBranchRef: string | null;
+  startX: number;
+  startY: number;
+  targetSha: string | null;
+  dropCandidates: DropCandidate[];
+  validDropTargetShas: ValidDropTargetShas;
+  initialScrollTop: number;
+  lastPointerY: number;
+  autoScrollFrame: number | null;
+}
+
+type RebaseAction = 'confirm-rebase' | 'cancel-rebase';
+
+const DRAG_THRESHOLD_PX = 4;
+const AUTO_SCROLL_EDGE_PX = 40;
+const AUTO_SCROLL_MAX_SPEED = 14;
+
+export class StackInteractionController {
+  private previewRollbackState: StackState | null = null;
+  private renderedState: StackState | null = null;
+  private pendingAction: PendingActionState = null;
+  private awaitingHostSync = false;
+
+  private readonly drag: DragSession = {
+    pendingBranchRef: null,
+    activeBranchRef: null,
+    startX: 0,
+    startY: 0,
+    targetSha: null,
+    dropCandidates: [],
+    validDropTargetShas: new Set<string>(),
+    initialScrollTop: 0,
+    lastPointerY: 0,
+    autoScrollFrame: null,
+  };
+
+  constructor(
+    private readonly elements: {
+      viewportElement: HTMLElement;
+      contentElement: HTMLElement;
+    },
+    private readonly postMessage: (message: WebviewToHostMessage) => void
+  ) {}
+
+  handleHostMessage(message: HostToWebviewMessage): void {
+    if (message.type !== 'stack') {
+      return;
+    }
+
+    const shouldRender =
+      !this.renderedState ||
+      this.pendingAction !== null ||
+      this.drag.activeBranchRef !== null ||
+      !areStackStatesVisuallyEqual(this.renderedState, message.state);
+
+    this.renderedState = message.state;
+    if (!message.state.pendingRebase) {
+      this.previewRollbackState = null;
+    }
+    this.pendingAction = null;
+    this.awaitingHostSync = false;
+    this.resetDragSession();
+    if (shouldRender) {
+      this.render();
+      this.revealPendingRebaseActions();
+    }
+  }
+
+  handleMouseDown(event: MouseEvent): void {
+    if (
+      event.button !== 0 ||
+      !this.renderedState ||
+      this.renderedState.pendingRebase ||
+      this.awaitingHostSync
+    ) {
+      return;
+    }
+
+    const sourceRow = (event.target as HTMLElement).closest<HTMLElement>(
+      '.row[data-drag-branch-ref]'
+    );
+    const branchRef = sourceRow?.dataset.dragBranchRef;
+    if (!branchRef) {
+      return;
+    }
+
+    this.drag.pendingBranchRef = branchRef;
+    this.drag.startX = event.clientX;
+    this.drag.startY = event.clientY;
+    this.drag.lastPointerY = event.clientY;
+    event.preventDefault();
+  }
+
+  handleClick(event: MouseEvent): void {
+    if (this.awaitingHostSync) {
+      return;
+    }
+
+    const actionButton = (event.target as HTMLElement).closest<HTMLButtonElement>(
+      'button[data-action]'
+    );
+    const action = actionButton?.dataset.action;
+    if (!isRebaseAction(action)) {
+      return;
+    }
+
+    this.handleActionClick(action);
+  }
+
+  handleMouseMove(event: MouseEvent): void {
+    const currentState = this.renderedState;
+    this.drag.lastPointerY = event.clientY;
+
+    if (currentState && this.drag.pendingBranchRef && !this.drag.activeBranchRef) {
+      const deltaX = event.clientX - this.drag.startX;
+      const deltaY = event.clientY - this.drag.startY;
+      if (Math.hypot(deltaX, deltaY) >= DRAG_THRESHOLD_PX) {
+        this.startDragSession(currentState, this.drag.pendingBranchRef);
+      }
+    }
+
+    if (!this.drag.activeBranchRef) {
+      return;
+    }
+
+    this.updateDropTarget(event.clientY);
+    this.ensureAutoScroll();
+  }
+
+  handleScroll(): void {
+    if (!this.drag.activeBranchRef) {
+      return;
+    }
+
+    this.updateDropTarget(this.drag.lastPointerY);
+  }
+
+  handleMouseUp(): void {
+    const hadPendingInteraction =
+      this.drag.pendingBranchRef !== null || this.drag.activeBranchRef !== null;
+    const currentState = this.renderedState;
+    const activeBranchRef = this.drag.activeBranchRef;
+    const targetSha = this.drag.targetSha;
+
+    this.resetDragSession();
+
+    if (!hadPendingInteraction) {
+      return;
+    }
+
+    if (!currentState || !activeBranchRef || !targetSha) {
+      this.render();
+      return;
+    }
+
+    const intent = createRebaseIntent(currentState, activeBranchRef, targetSha);
+    if (!intent) {
+      this.render();
+      return;
+    }
+
+    this.previewRollbackState = currentState;
+    this.renderedState = applyRebaseIntentToState(currentState, intent);
+    this.awaitingHostSync = true;
+    this.pendingAction = 'sync';
+    this.render();
+    this.revealPendingRebaseActions();
+    this.postMessage({
+      type: 'submitRebaseIntent',
+      intent,
+    });
+  }
+
+  handleWindowBlur(): void {
+    this.resetDragSession();
+  }
+
+  private render(): void {
+    if (!this.renderedState) {
+      return;
+    }
+
+    renderStackView(this.elements.contentElement, this.renderedState, {
+      pendingAction: this.pendingAction,
+    });
+  }
+
+  private revealPendingRebaseActions(): void {
+    if (!this.renderedState?.pendingRebase || this.drag.activeBranchRef) {
+      return;
+    }
+
+    this.elements.contentElement
+      .querySelector<HTMLElement>('.row[data-pending-rebase-root="true"]')
+      ?.scrollIntoView({ block: 'nearest' });
+  }
+
+  private startDragSession(currentState: StackState, branchRef: string): void {
+    this.drag.activeBranchRef = branchRef;
+    this.drag.pendingBranchRef = null;
+    this.drag.dropCandidates = collectDropCandidates(this.elements.contentElement);
+    this.drag.validDropTargetShas = collectValidDropTargetShas(
+      currentState,
+      branchRef,
+      this.drag.dropCandidates
+    );
+    this.drag.initialScrollTop = this.elements.viewportElement.scrollTop;
+    this.elements.viewportElement.classList.add('dragging');
+    document.body.classList.add('dragging-rebase');
+  }
+
+  private updateDropTarget(pointerY: number): void {
+    if (!this.drag.activeBranchRef) {
+      this.setDropTarget(null);
+      return;
+    }
+
+    const scrollDelta =
+      this.elements.viewportElement.scrollTop - this.drag.initialScrollTop;
+    this.setDropTarget(
+      resolveDropTarget(
+        pointerY,
+        this.drag.dropCandidates,
+        this.drag.validDropTargetShas,
+        scrollDelta
+      )
+    );
+  }
+
+  private setDropTarget(nextTargetSha: string | null): void {
+    if (this.drag.targetSha === nextTargetSha) {
+      return;
+    }
+
+    if (this.drag.targetSha) {
+      this.getCommitRow(this.drag.targetSha)?.classList.remove('drop-target');
+    }
+
+    this.drag.targetSha = nextTargetSha;
+
+    if (nextTargetSha) {
+      this.getCommitRow(nextTargetSha)?.classList.add('drop-target');
+    }
+  }
+
+  private ensureAutoScroll(): void {
+    if (this.drag.autoScrollFrame !== null || !this.drag.activeBranchRef) {
+      return;
+    }
+
+    this.drag.autoScrollFrame = window.requestAnimationFrame(() => {
+      this.runAutoScroll();
+    });
+  }
+
+  private runAutoScroll(): void {
+    this.drag.autoScrollFrame = null;
+    if (!this.drag.activeBranchRef) {
+      return;
+    }
+
+    const viewportRect = this.elements.viewportElement.getBoundingClientRect();
+    const distanceFromTop = this.drag.lastPointerY - viewportRect.top;
+    const distanceFromBottom = viewportRect.bottom - this.drag.lastPointerY;
+
+    let scrollDelta = 0;
+    if (distanceFromTop < AUTO_SCROLL_EDGE_PX) {
+      const proximity = distanceFromTop <= 0 ? 1 : 1 - distanceFromTop / AUTO_SCROLL_EDGE_PX;
+      scrollDelta = -AUTO_SCROLL_MAX_SPEED * proximity;
+    } else if (distanceFromBottom < AUTO_SCROLL_EDGE_PX) {
+      const proximity =
+        distanceFromBottom <= 0 ? 1 : 1 - distanceFromBottom / AUTO_SCROLL_EDGE_PX;
+      scrollDelta = AUTO_SCROLL_MAX_SPEED * proximity;
+    }
+
+    if (scrollDelta !== 0) {
+      this.elements.viewportElement.scrollBy(0, scrollDelta);
+      this.updateDropTarget(this.drag.lastPointerY);
+      this.drag.autoScrollFrame = window.requestAnimationFrame(() => {
+        this.runAutoScroll();
+      });
+    }
+  }
+
+  private resetDragSession(): void {
+    this.drag.pendingBranchRef = null;
+    this.drag.activeBranchRef = null;
+    this.drag.startX = 0;
+    this.drag.startY = 0;
+    this.drag.lastPointerY = 0;
+    this.drag.dropCandidates = [];
+    this.drag.validDropTargetShas = new Set<string>();
+    this.drag.initialScrollTop = 0;
+    this.setDropTarget(null);
+    if (this.drag.autoScrollFrame !== null) {
+      window.cancelAnimationFrame(this.drag.autoScrollFrame);
+      this.drag.autoScrollFrame = null;
+    }
+    this.elements.viewportElement.classList.remove('dragging');
+    document.body.classList.remove('dragging-rebase');
+  }
+
+  private handleActionClick(action: RebaseAction): void {
+    switch (action) {
+      case 'confirm-rebase':
+        this.pendingAction = 'confirm';
+        this.awaitingHostSync = true;
+        this.render();
+        this.postMessage({ type: 'confirmRebaseIntent' });
+        return;
+      case 'cancel-rebase':
+        if (this.previewRollbackState) {
+          this.renderedState = this.previewRollbackState;
+        } else {
+          this.pendingAction = 'cancel';
+        }
+        this.awaitingHostSync = true;
+        this.render();
+        this.postMessage({ type: 'cancelRebaseIntent' });
+        return;
+    }
+  }
+
+  private getCommitRow(commitSha: string): HTMLElement | null {
+    return this.elements.contentElement.querySelector<HTMLElement>(
+      `.row[data-commit-sha="${commitSha}"]`
+    );
+  }
+}
+
+function isRebaseAction(action: string | undefined): action is RebaseAction {
+  return action === 'confirm-rebase' || action === 'cancel-rebase';
+}
+
+function areStackStatesVisuallyEqual(left: StackState, right: StackState): boolean {
+  if (
+    left.error !== right.error ||
+    left.current !== right.current ||
+    left.trunk !== right.trunk ||
+    !areRebaseIntentsEqual(left.pendingRebase, right.pendingRebase) ||
+    left.branches.length !== right.branches.length
+  ) {
+    return false;
+  }
+
+  return left.branches.every((branch, index) => {
+    const other = right.branches[index];
+    return (
+      branch.ref === other.ref &&
+      branch.headSha === other.headSha &&
+      branch.baseSha === other.baseSha &&
+      branch.parentRef === other.parentRef &&
+      branch.isCurrent === other.isCurrent &&
+      areStringArraysEqual(branch.childRefs, other.childRefs) &&
+      areStringArraysEqual(branch.ownedShas, other.ownedShas) &&
+      areCommitsEqual(branch.commits, other.commits)
+    );
+  });
+}
+
+function areRebaseIntentsEqual(
+  left: StackState['pendingRebase'],
+  right: StackState['pendingRebase']
+): boolean {
+  if (!left || !right) {
+    return left === right;
+  }
+
+  return (
+    left.targetBaseSha === right.targetBaseSha &&
+    left.targetBranchRef === right.targetBranchRef &&
+    areIntentNodesEqual(left.root, right.root)
+  );
+}
+
+function areIntentNodesEqual(
+  left: NonNullable<StackState['pendingRebase']>['root'],
+  right: NonNullable<StackState['pendingRebase']>['root']
+): boolean {
+  if (
+    left.branchRef !== right.branchRef ||
+    left.headSha !== right.headSha ||
+    left.baseSha !== right.baseSha ||
+    !areStringArraysEqual(left.ownedShas, right.ownedShas) ||
+    left.children.length !== right.children.length
+  ) {
+    return false;
+  }
+
+  return left.children.every((child, index) => areIntentNodesEqual(child, right.children[index]));
+}
+
+function areStringArraysEqual(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function areCommitsEqual(
+  left: StackState['branches'][number]['commits'],
+  right: StackState['branches'][number]['commits']
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((commit, index) => {
+      const other = right[index];
+      return (
+        commit.sha === other.sha &&
+        commit.message === other.message &&
+        commit.author === other.author &&
+        commit.timeMs === other.timeMs &&
+        commit.parentSha === other.parentSha
+      );
+    })
+  );
+}

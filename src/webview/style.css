@@ -22,17 +22,107 @@ body {
 }
 
 #root {
+  position: relative;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+}
+
+#viewport {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
   overflow: auto;
   overflow-x: hidden;
   padding: 4px 0;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+#viewport::-webkit-scrollbar {
+  display: none;
+}
+
+#stack {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+#scrollbar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 12px;
+  opacity: 0;
+  pointer-events: none;
+  background: color-mix(
+    in srgb,
+    var(--vscode-scrollbar-background, var(--vscode-sideBar-background)) 42%,
+    transparent
+  );
+  transition:
+    opacity 480ms cubic-bezier(0.19, 1, 0.22, 1) 140ms,
+    visibility 0s linear 620ms;
+  visibility: hidden;
+}
+
+#scrollbar.hidden {
+  pointer-events: none;
+}
+
+#root.scrollbar-visible #scrollbar:not(.hidden) {
+  opacity: 1;
+  pointer-events: auto;
+  transition:
+    opacity 90ms cubic-bezier(0.2, 0, 0, 1),
+    visibility 0s linear 0s;
+  visibility: visible;
+}
+
+#scrollbar-thumb {
+  position: absolute;
+  top: 0;
+  left: 1px;
+  right: 1px;
+  min-height: 24px;
+  border-radius: 0;
+  background: var(--vscode-scrollbarSlider-background, #79797966);
+  transition: background-color 120ms ease-out;
+}
+
+#scrollbar:hover #scrollbar-thumb,
+#scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-hoverBackground, #646464b3);
+}
+
+#scrollbar.dragging #scrollbar-thumb,
+#scrollbar-thumb.dragging,
+#scrollbar-thumb:active {
+  background: var(--vscode-scrollbarSlider-activeBackground, #bfbfbf66);
+}
+
+#scrollbar.hidden #scrollbar-thumb {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #scrollbar,
+  #root.scrollbar-visible #scrollbar:not(.hidden),
+  #scrollbar-thumb {
+    transition: none;
+  }
 }
 
 .row {
+  position: relative;
   display: flex;
   align-items: center;
+  gap: 8px;
   height: var(--swimlane-height);
   min-height: var(--swimlane-height);
   max-height: var(--swimlane-height);
@@ -44,8 +134,48 @@ body {
   flex-shrink: 0;
 }
 
+.dragging-rebase,
+.dragging-rebase * {
+  cursor: grabbing !important;
+}
+
+.row.drag-source {
+  cursor: grab;
+}
+
 .row:hover {
   background: var(--vscode-list-hoverBackground);
+}
+
+.row.rebase-prompting {
+  background: var(--vscode-list-inactiveSelectionBackground, var(--vscode-list-hoverBackground));
+}
+
+.row.rebase-idle {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.row.drop-target::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -1px;
+  height: 2px;
+  background: var(--vscode-focusBorder, var(--vscode-list-focusOutline, #007fd4));
+  pointer-events: none;
+}
+
+.row.drop-target::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: -3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--vscode-focusBorder, var(--vscode-list-focusOutline, #007fd4));
+  pointer-events: none;
 }
 
 .graph-container {
@@ -109,7 +239,6 @@ body {
 }
 
 .subject {
-  margin-left: 8px;
   color: var(--vscode-descriptionForeground);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -130,6 +259,62 @@ body {
   display: none;
 }
 
+.rebase-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.rebase-summary {
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+}
+
+.action-button {
+  appearance: none;
+  border: 1px solid var(--vscode-button-secondaryBackground, #3a3d41);
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, #ffffff);
+  border-radius: 2px;
+  font: inherit;
+  line-height: 18px;
+  min-height: 18px;
+  padding: 0 8px;
+}
+
+.action-button:hover {
+  background: var(--vscode-button-secondaryHoverBackground, #45494e);
+}
+
+.action-button:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.action-button:disabled:hover {
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+}
+
+.action-button.primary {
+  border-color: var(--vscode-button-background, #0e639c);
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #ffffff);
+}
+
+.action-button.primary:hover {
+  background: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+.action-button.primary:disabled:hover {
+  background: var(--vscode-button-background, #0e639c);
+}
+
+.action-button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #007fd4);
+  outline-offset: 1px;
+}
+
 .empty {
   padding: 20px 16px;
   color: var(--vscode-descriptionForeground);
@@ -139,43 +324,4 @@ body {
 
 .empty.error {
   color: var(--vscode-errorForeground);
-}
-
-/* Native VSCode scrollbar (square/blocky, no rounded macOS overlay).
-   -webkit-appearance: none is MANDATORY on macOS to override OS overlay. */
-*::-webkit-scrollbar,
-::-webkit-scrollbar {
-  -webkit-appearance: none !important;
-  appearance: none !important;
-  width: 10px;
-  height: 10px;
-  background: transparent;
-}
-
-*::-webkit-scrollbar-track,
-::-webkit-scrollbar-track {
-  background: transparent;
-  border: none;
-}
-
-*::-webkit-scrollbar-thumb,
-::-webkit-scrollbar-thumb {
-  background-color: var(--vscode-scrollbarSlider-background, #79797966);
-  border-radius: 0 !important;
-  border: none;
-}
-
-*::-webkit-scrollbar-thumb:hover,
-::-webkit-scrollbar-thumb:hover {
-  background-color: var(--vscode-scrollbarSlider-hoverBackground, #646464b3);
-}
-
-*::-webkit-scrollbar-thumb:active,
-::-webkit-scrollbar-thumb:active {
-  background-color: var(--vscode-scrollbarSlider-activeBackground, #bfbfbf66);
-}
-
-*::-webkit-scrollbar-corner,
-::-webkit-scrollbar-corner {
-  background: transparent;
 }

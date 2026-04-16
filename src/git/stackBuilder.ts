@@ -64,6 +64,7 @@ export class GitStackBuilder {
         current,
         repoRoot,
         error: null,
+        pendingRebase: null,
       };
     } catch (error) {
       return {
@@ -265,6 +266,7 @@ function createErrorState(error: string): StackState {
     current: null,
     repoRoot: null,
     error,
+    pendingRebase: null,
   };
 }
 

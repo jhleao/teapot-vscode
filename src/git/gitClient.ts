@@ -93,6 +93,54 @@ export class GitClient {
     }
   }
 
+  async getCommitShas(options: {
+    fromRef: string | null;
+    toRef: string;
+    limit?: number;
+  }): Promise<string[]> {
+    const { fromRef, toRef, limit = 200 } = options;
+    const range = fromRef ? `${fromRef}..${toRef}` : toRef;
+
+    const stdout = await this.run([
+      'rev-list',
+      '--first-parent',
+      '-n',
+      String(limit),
+      range,
+    ]);
+
+    return stdout
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+  }
+
+  async revParse(ref: string): Promise<string> {
+    const stdout = await this.run(['rev-parse', ref]);
+    return stdout.trim();
+  }
+
+  async checkout(ref: string): Promise<void> {
+    await this.run(['checkout', '--quiet', ref]);
+  }
+
+  async rebaseBranchOnto(options: {
+    branchRef: string;
+    upstreamSha: string;
+    targetBaseSha: string;
+  }): Promise<void> {
+    const { branchRef, upstreamSha, targetBaseSha } = options;
+    await this.run([
+      'rebase',
+      '--quiet',
+      '--reapply-cherry-picks',
+      '--onto',
+      targetBaseSha,
+      upstreamSha,
+      branchRef,
+    ]);
+  }
+
   private run(args: string[]): Promise<string> {
     return runGit(this.repoRoot, args);
   }

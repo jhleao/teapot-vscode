@@ -19,12 +19,27 @@ export interface StackBranch {
   isCurrent: boolean;
 }
 
+export interface RebaseIntentNode {
+  branchRef: string;
+  headSha: string;
+  baseSha: string;
+  ownedShas: string[];
+  children: RebaseIntentNode[];
+}
+
+export interface RebaseIntent {
+  root: RebaseIntentNode;
+  targetBaseSha: string;
+  targetBranchRef: string | null;
+}
+
 export interface StackState {
   branches: StackBranch[];
   trunk: string | null;
   current: string | null;
   repoRoot: string | null;
   error: string | null;
+  pendingRebase: RebaseIntent | null;
 }
 
 export type HostToWebviewMessage = {
@@ -34,4 +49,7 @@ export type HostToWebviewMessage = {
 
 export type WebviewToHostMessage =
   | { type: 'ready' }
-  | { type: 'refresh' };
+  | { type: 'refresh' }
+  | { type: 'submitRebaseIntent'; intent: RebaseIntent }
+  | { type: 'confirmRebaseIntent' }
+  | { type: 'cancelRebaseIntent' };
