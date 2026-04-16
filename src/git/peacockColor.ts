@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 export class PeacockColorUtils {
@@ -21,6 +21,67 @@ export class PeacockColorUtils {
     const color = record['peacock.color'] ?? record['peacock.remoteColor'];
     return typeof color === 'string' && color.trim() ? color.trim() : null;
   }
+
+  static async writeForWorktree(worktreePath: string, color: string): Promise<void> {
+    const vscodeDir = join(worktreePath, '.vscode');
+    await mkdir(vscodeDir, { recursive: true });
+
+    const foreground = pickReadableForeground(color) ?? '#ffffff';
+    const settings = {
+      'peacock.color': color,
+      'workbench.colorCustomizations': {
+        'activityBar.background': color,
+        'activityBar.foreground': foreground,
+        'activityBar.inactiveForeground': foreground,
+        'titleBar.activeBackground': color,
+        'titleBar.activeForeground': foreground,
+        'titleBar.inactiveBackground': color,
+        'titleBar.inactiveForeground': foreground,
+        'statusBar.background': color,
+        'statusBar.foreground': foreground,
+      },
+    };
+
+    await writeFile(
+      join(vscodeDir, 'settings.json'),
+      `${JSON.stringify(settings, null, 2)}\n`,
+      'utf8'
+    );
+  }
+}
+
+function pickReadableForeground(color: string): string | null {
+  const rgb = parseHexColor(color);
+  if (!rgb) {
+    return null;
+  }
+  const [r, g, b] = rgb;
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.55 ? '#000000' : '#ffffff';
+}
+
+function parseHexColor(color: string): [number, number, number] | null {
+  const match = /^#?([0-9a-f]{3,8})$/i.exec(color.trim());
+  if (!match) {
+    return null;
+  }
+
+  const hex = match[1];
+  if (hex.length === 3 || hex.length === 4) {
+    const r = parseInt(hex[0] + hex[0], 16);
+    const g = parseInt(hex[1] + hex[1], 16);
+    const b = parseInt(hex[2] + hex[2], 16);
+    return [r, g, b];
+  }
+
+  if (hex.length === 6 || hex.length === 8) {
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    return [r, g, b];
+  }
+
+  return null;
 }
 
 function parseJsoncSafely(text: string): unknown {

@@ -107,6 +107,7 @@ describe('buildBranchBadgeContext', () => {
         branchRef: 'feature/xyz',
         isProtected: false,
         isCurrent: false,
+        hasWorktree: false,
       })
     ).toEqual({
       webviewSection: 'branch-badge',
@@ -114,12 +115,18 @@ describe('buildBranchBadgeContext', () => {
       branchRef: 'feature/xyz',
       teapotBranchProtected: false,
       teapotBranchIsCurrent: false,
+      teapotBranchHasWorktree: false,
     });
   });
 
   it('marks current/trunk branches as protected so Delete is hidden', () => {
     expect(
-      buildBranchBadgeContext({ branchRef: 'main', isProtected: true, isCurrent: false })
+      buildBranchBadgeContext({
+        branchRef: 'main',
+        isProtected: true,
+        isCurrent: false,
+        hasWorktree: false,
+      })
     ).toMatchObject({
       teapotBranchProtected: true,
       teapotBranchIsCurrent: false,
@@ -132,9 +139,23 @@ describe('buildBranchBadgeContext', () => {
         branchRef: 'feature/xyz',
         isProtected: true,
         isCurrent: true,
+        hasWorktree: false,
       })
     ).toMatchObject({
       teapotBranchIsCurrent: true,
+    });
+  });
+
+  it('flags branches that already have a worktree so New Worktree is hidden', () => {
+    expect(
+      buildBranchBadgeContext({
+        branchRef: 'feature/xyz',
+        isProtected: false,
+        isCurrent: false,
+        hasWorktree: true,
+      })
+    ).toMatchObject({
+      teapotBranchHasWorktree: true,
     });
   });
 });

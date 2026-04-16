@@ -76,6 +76,11 @@
         "command": "teapot.deleteWorktree",
         "title": "Delete Worktree...",
         "category": "Teapot"
+      },
+      {
+        "command": "teapot.createWorktree",
+        "title": "New Worktree Here",
+        "category": "Teapot"
       }
     ],
     "menus": {
@@ -101,6 +106,11 @@
           "command": "teapot.deleteBranch",
           "when": "webviewId == 'teapot.stackView' && webviewSection == 'branch-badge' && !teapotBranchProtected",
           "group": "1_modification@2"
+        },
+        {
+          "command": "teapot.createWorktree",
+          "when": "webviewId == 'teapot.stackView' && webviewSection == 'branch-badge' && !teapotBranchIsCurrent && !teapotBranchHasWorktree",
+          "group": "1_modification@3"
         },
         {
           "command": "teapot.amendCommitMessage",
@@ -150,6 +160,10 @@
         },
         {
           "command": "teapot.deleteWorktree",
+          "when": "false"
+        },
+        {
+          "command": "teapot.createWorktree",
           "when": "false"
         }
       ]

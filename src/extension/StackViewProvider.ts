@@ -1,6 +1,10 @@
+import { mkdir, readdir } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
 import * as vscode from 'vscode';
 import { GitClient } from '../git/gitClient';
+import { PeacockColorUtils } from '../git/peacockColor';
 import { GitStackBuilder } from '../git/stackBuilder';
+import { WorktreeNamingUtils } from '../git/worktreeNaming';
 import type { HostToWebviewMessage, RebaseIntent, StackState, WebviewToHostMessage } from '../protocol';
 import { GitRebaseExecutor } from '../rebase/executor';
 import { isRebaseIntentValid } from '../rebase/intent';
@@ -71,6 +75,10 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
   deleteWorktree(branchRef: string, worktreePath: string): void {
     this.enqueueOperation(() => this.performDeleteWorktree(branchRef, worktreePath));
+  }
+
+  createWorktree(branchRef: string): void {
+    this.enqueueOperation(() => this.performCreateWorktree(branchRef));
   }
 
   async refresh(): Promise<void> {
@@ -371,6 +379,50 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     );
   }
 
+  private async performCreateWorktree(branchRef: string): Promise<void> {
+    const git = await this.openGit();
+    if (!git) {
+      return;
+    }
+
+    const workspaceRoot = this.getWorkspaceRoot();
+    const state = await this.getStateForUiInteraction(workspaceRoot);
+    const branch = state.branches.find((candidate) => candidate.ref === branchRef);
+    if (!branch) {
+      void vscode.window.showErrorMessage(`Branch "${branchRef}" not found.`);
+      return;
+    }
+    if (branch.isCurrent) {
+      void vscode.window.showErrorMessage(
+        `Cannot create a worktree for "${branchRef}" because it is the current branch.`
+      );
+      return;
+    }
+    if (branch.worktreePath) {
+      void vscode.window.showErrorMessage(
+        `Branch "${branchRef}" already has a worktree at ${branch.worktreePath}.`
+      );
+      return;
+    }
+
+    const repoRoot = git.getRepoRoot();
+    const worktreesDir = join(dirname(repoRoot), `${basename(repoRoot)}-worktrees`);
+    await mkdir(worktreesDir, { recursive: true });
+
+    const taken = await readExistingEntries(worktreesDir);
+    const animal = WorktreeNamingUtils.pickAnimal(taken);
+    const worktreePath = join(worktreesDir, animal);
+    const color = WorktreeNamingUtils.pickColor();
+
+    await git.addWorktree(worktreePath, branchRef);
+    await PeacockColorUtils.writeForWorktree(worktreePath, color);
+
+    await this.refresh();
+    void vscode.window.showInformationMessage(
+      `Created worktree "${animal}" for "${branchRef}"`
+    );
+  }
+
   private async openGit(): Promise<GitClient | null> {
     const workspaceRoot = this.getWorkspaceRoot();
     if (!workspaceRoot) {
@@ -446,4 +498,13 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
 function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+async function readExistingEntries(path: string): Promise<Set<string>> {
+  try {
+    const entries = await readdir(path);
+    return new Set(entries);
+  } catch {
+    return new Set();
+  }
 }

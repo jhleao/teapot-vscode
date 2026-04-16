@@ -389,6 +389,8 @@ function areStackStatesVisuallyEqual(left: StackState, right: StackState): boole
       branch.baseSha === other.baseSha &&
       branch.parentRef === other.parentRef &&
       branch.isCurrent === other.isCurrent &&
+      branch.worktreePath === other.worktreePath &&
+      branch.worktreePeacockColor === other.worktreePeacockColor &&
       areStringArraysEqual(branch.childRefs, other.childRefs) &&
       areStringArraysEqual(branch.ownedShas, other.ownedShas) &&
       areCommitsEqual(branch.commits, other.commits)

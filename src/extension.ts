@@ -32,6 +32,9 @@ export function activate(context: vscode.ExtensionContext): void {
         provider.deleteWorktree(ctx.branchRef, ctx.worktreePath);
       }
     ),
+    vscode.commands.registerCommand('teapot.createWorktree', (ctx: { branchRef: string }) => {
+      provider.createWorktree(ctx.branchRef);
+    }),
     vscode.commands.registerCommand(
       'teapot.openWorktreeInNewWindow',
       async (ctx: { worktreePath: string }) => {

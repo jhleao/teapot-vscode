@@ -133,7 +133,9 @@ function createRowLabels(
 ): HTMLElement {
   const container = document.createElement('div');
   container.className = 'label-container';
-  container.append(createBranchLabel(branchName, isCurrent, isTrunkBranch));
+  container.append(
+    createBranchLabel(branchName, isCurrent, isTrunkBranch, worktreePath !== null)
+  );
   if (worktreePath) {
     container.append(createWorktreeLabel(branchName, worktreePath, worktreePeacockColor));
   }
@@ -143,7 +145,8 @@ function createRowLabels(
 function createBranchLabel(
   branchName: string,
   isCurrent: boolean,
-  isTrunkBranch: boolean
+  isTrunkBranch: boolean,
+  hasWorktree: boolean
 ): HTMLElement {
   const label = document.createElement('span');
   label.className = 'label branch';
@@ -157,6 +160,7 @@ function createBranchLabel(
       branchRef: branchName,
       isProtected: isCurrent || isTrunkBranch,
       isCurrent,
+      hasWorktree,
     })
   );
 
@@ -322,12 +326,14 @@ export interface BranchBadgeContext {
   branchRef: string;
   teapotBranchProtected: boolean;
   teapotBranchIsCurrent: boolean;
+  teapotBranchHasWorktree: boolean;
 }
 
 export function buildBranchBadgeContext(options: {
   branchRef: string;
   isProtected: boolean;
   isCurrent: boolean;
+  hasWorktree: boolean;
 }): BranchBadgeContext {
   return {
     webviewSection: 'branch-badge',
@@ -335,6 +341,7 @@ export function buildBranchBadgeContext(options: {
     branchRef: options.branchRef,
     teapotBranchProtected: options.isProtected,
     teapotBranchIsCurrent: options.isCurrent,
+    teapotBranchHasWorktree: options.hasWorktree,
   };
 }
 

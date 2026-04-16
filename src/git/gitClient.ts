@@ -163,6 +163,10 @@ export class GitClient {
     await this.run(args);
   }
 
+  async addWorktree(path: string, ref: string): Promise<void> {
+    await this.run(['worktree', 'add', path, ref]);
+  }
+
   async rebaseBranchOnto(options: {
     branchRef: string;
     upstreamSha: string;
