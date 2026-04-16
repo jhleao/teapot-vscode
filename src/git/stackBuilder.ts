@@ -2,9 +2,19 @@ import type { StackBranch, StackState } from '../protocol';
 import { GitClient, type LocalBranchHead } from './gitClient';
 import { selectTrunk } from './trunk';
 
+const DEFAULT_TRUNK_COMMIT_LIMIT = 200;
+const BRANCH_COMMIT_LIMIT = 200;
+
 interface ParentCandidate {
   name: string;
   distance: number;
+}
+
+interface ResolvedBranchTopology {
+  branch: LocalBranchHead;
+  parentRef: string | null;
+  parentHeadSha: string | null;
+  baseSha: string;
 }
 
 interface GitStackQueries {
@@ -27,25 +37,23 @@ export class GitStackBuilder {
         git.getCurrentBranch(),
       ]);
       const queries = createGitStackQueries(git);
-      const branchHeadsByName = new Map(branches.map((branch) => [branch.name, branch.headSha]));
       const trunk = selectTrunk(branches.map((branch) => branch.name));
-      const parentRefs = await buildParentIndex(queries, branches, trunk);
-      const childRefs = buildChildIndex(branches, parentRefs);
+      const topology = await resolveBranchTopology(queries, branches, trunk);
+      const childRefs = buildChildIndex(topology);
+      const trunkCommitLimit = await determineTrunkCommitLimit(queries, topology, trunk);
 
       const stackBranches = await Promise.all(
-        branches.map(async (branch) => {
-          const parentRef = parentRefs.get(branch.name) ?? null;
-          const parentHeadSha = parentRef ? branchHeadsByName.get(parentRef) ?? null : null;
-
+        topology.map(async ({ branch, parentRef, parentHeadSha, baseSha }) => {
           return createStackBranch({
             git,
-            queries,
             branch,
+            baseSha,
             parentRef,
             parentHeadSha,
             childRefs: childRefs.get(branch.name) ?? [],
             current,
             trunk,
+            trunkCommitLimit,
           });
         })
       );
@@ -68,25 +76,33 @@ export class GitStackBuilder {
 
 async function createStackBranch(params: {
   git: GitClient;
-  queries: GitStackQueries;
   branch: LocalBranchHead;
+  baseSha: string;
   parentRef: string | null;
   parentHeadSha: string | null;
   childRefs: string[];
   current: string | null;
   trunk: string | null;
+  trunkCommitLimit: number;
 }): Promise<StackBranch> {
-  const { git, queries, branch, parentRef, parentHeadSha, childRefs, current, trunk } = params;
+  const {
+    git,
+    branch,
+    baseSha,
+    parentRef,
+    parentHeadSha,
+    childRefs,
+    current,
+    trunk,
+    trunkCommitLimit,
+  } = params;
   const isTrunk = branch.name === trunk;
 
-  const [baseSha, commits] = await Promise.all([
-    resolveBaseSha(queries, branch.headSha, parentHeadSha),
-    git.getCommits({
-      fromRef: isTrunk ? null : parentHeadSha,
-      toRef: branch.headSha,
-      limit: isTrunk ? 5 : 200,
-    }),
-  ]);
+  const commits = await git.getCommits({
+    fromRef: isTrunk ? null : parentHeadSha,
+    toRef: branch.headSha,
+    limit: isTrunk ? trunkCommitLimit : BRANCH_COMMIT_LIMIT,
+  });
 
   return {
     ref: branch.name,
@@ -100,6 +116,29 @@ async function createStackBranch(params: {
     isRemote: false,
     isCurrent: branch.name === current,
   };
+}
+
+async function resolveBranchTopology(
+  queries: GitStackQueries,
+  branches: LocalBranchHead[],
+  trunk: string | null
+): Promise<ResolvedBranchTopology[]> {
+  const branchHeadsByName = new Map(branches.map((branch) => [branch.name, branch.headSha]));
+  const parentRefs = await buildParentIndex(queries, branches, trunk);
+
+  return Promise.all(
+    branches.map(async (branch) => {
+      const parentRef = parentRefs.get(branch.name) ?? null;
+      const parentHeadSha = parentRef ? branchHeadsByName.get(parentRef) ?? null : null;
+
+      return {
+        branch,
+        parentRef,
+        parentHeadSha,
+        baseSha: await resolveBaseSha(queries, branch.headSha, parentHeadSha),
+      };
+    })
+  );
 }
 
 async function buildParentIndex(
@@ -124,17 +163,15 @@ async function buildParentIndex(
 }
 
 function buildChildIndex(
-  branches: LocalBranchHead[],
-  parentRefs: Map<string, string | null>
+  topology: ResolvedBranchTopology[]
 ): Map<string, string[]> {
   const childRefs = new Map<string, string[]>();
 
-  for (const branch of branches) {
+  for (const { branch } of topology) {
     childRefs.set(branch.name, []);
   }
 
-  for (const branch of branches) {
-    const parentRef = parentRefs.get(branch.name);
+  for (const { branch, parentRef } of topology) {
     if (parentRef && childRefs.has(parentRef)) {
       childRefs.get(parentRef)?.push(branch.name);
     }
@@ -145,6 +182,33 @@ function buildChildIndex(
   }
 
   return childRefs;
+}
+
+async function determineTrunkCommitLimit(
+  queries: GitStackQueries,
+  topology: ResolvedBranchTopology[],
+  trunk: string | null
+): Promise<number> {
+  const trunkBranch = topology.find(({ branch }) => branch.name === trunk);
+  if (!trunkBranch) {
+    return DEFAULT_TRUNK_COMMIT_LIMIT;
+  }
+
+  const directChildren = topology.filter(({ parentRef }) => parentRef === trunk);
+  if (directChildren.length === 0) {
+    return DEFAULT_TRUNK_COMMIT_LIMIT;
+  }
+
+  const commitDepths = await Promise.all(
+    directChildren.map(async ({ baseSha }) => {
+      const commitsAhead = await queries.countCommits(baseSha, trunkBranch.branch.headSha);
+      return commitsAhead + 1;
+    })
+  );
+
+  // Load enough of trunk to keep every direct branch attachment point available
+  // to the layout algorithm, while still using a sensible minimum for smaller repos.
+  return Math.max(DEFAULT_TRUNK_COMMIT_LIMIT, ...commitDepths);
 }
 
 async function inferParentRef(
