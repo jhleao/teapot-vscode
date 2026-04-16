@@ -1,13 +1,6 @@
 :root {
   --swimlane-width: 14px;
   --swimlane-height: 22px;
-  --lane-color-1: var(--vscode-scmGraph-foreground1, #ffb000);
-  --lane-color-2: var(--vscode-scmGraph-foreground2, #dc267f);
-  --lane-color-3: var(--vscode-scmGraph-foreground3, #994f00);
-  --lane-color-4: var(--vscode-scmGraph-foreground4, #40b0a6);
-  --lane-color-5: var(--vscode-scmGraph-foreground5, #b66dff);
-  --ref-color: var(--vscode-scmGraph-historyItemRefColor, var(--vscode-charts-blue, #007acc));
-  --base-color: var(--vscode-scmGraph-historyItemBaseRefColor, #ea5c00);
 }
 
 * {
@@ -32,7 +25,7 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  overflow-y: auto;
+  overflow: auto;
   overflow-x: hidden;
   padding: 4px 0;
 }
@@ -53,16 +46,6 @@ body {
 
 .row:hover {
   background: var(--vscode-list-hoverBackground);
-}
-
-.row.selected {
-  background: var(--vscode-list-inactiveSelectionBackground);
-}
-
-.row.selected:focus-within,
-#root:focus-within .row.selected {
-  background: var(--vscode-list-activeSelectionBackground);
-  color: var(--vscode-list-activeSelectionForeground);
 }
 
 .graph-container {
@@ -97,30 +80,32 @@ body {
   align-items: center;
   gap: 4px;
   padding: 0 6px;
-  height: 18px;
-  line-height: 18px;
-  border-radius: 10px;
-  font-size: 12px;
-  background: var(--vscode-badge-background);
-  color: var(--vscode-badge-foreground);
-  max-width: 200px;
+  height: 16px;
+  line-height: 14px;
+  border-radius: 4px;
+  font-size: 11px;
+  max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .label.branch {
-  background: var(--lane-color);
-  color: var(--vscode-editor-background, #0b0b0b);
-  font-weight: 500;
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, #e0e0e0);
+  border: 1px solid var(--vscode-button-secondaryBackground, #3a3d41);
+  font-weight: 400;
 }
 
 .label.branch.current {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #ffffff);
+  border-color: var(--vscode-button-background, #0e639c);
   font-weight: 600;
-  outline: 1px solid var(--vscode-focusBorder, transparent);
 }
 
-.label .codicon {
-  font-size: 12px;
+.label-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .subject {
@@ -141,6 +126,10 @@ body {
   font-style: italic;
 }
 
+.row.branch-header .subject:empty {
+  display: none;
+}
+
 .empty {
   padding: 20px 16px;
   color: var(--vscode-descriptionForeground);
@@ -150,19 +139,6 @@ body {
 
 .empty.error {
   color: var(--vscode-errorForeground);
-}
-
-.separator {
-  height: 1px;
-  background: var(--vscode-sideBarSectionHeader-border, transparent);
-  margin: 4px 0;
-}
-
-.codicon {
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  vertical-align: -2px;
 }
 
 /* Native VSCode scrollbar (square/blocky, no rounded macOS overlay).
@@ -202,14 +178,4 @@ body {
 *::-webkit-scrollbar-corner,
 ::-webkit-scrollbar-corner {
   background: transparent;
-}
-
-.codicon-git-branch::before {
-  content: '';
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  background: currentColor;
-  -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path fill='black' d='M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122V6A2.5 2.5 0 0110 8.5H6a1 1 0 00-1 1v1.128a2.251 2.251 0 11-1.5 0V5.372a2.25 2.25 0 111.5 0v1.836A2.492 2.492 0 016 7h4a1 1 0 001-1v-.628A2.25 2.25 0 019.5 3.25zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5zM3.5 3.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0z'/></svg>") no-repeat center / contain;
-          mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path fill='black' d='M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122V6A2.5 2.5 0 0110 8.5H6a1 1 0 00-1 1v1.128a2.251 2.251 0 11-1.5 0V5.372a2.25 2.25 0 111.5 0v1.836A2.492 2.492 0 016 7h4a1 1 0 001-1v-.628A2.25 2.25 0 019.5 3.25zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5zM3.5 3.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0z'/></svg>") no-repeat center / contain;
 }

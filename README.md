@@ -17,7 +17,7 @@ Out of scope for MVP: working tree / staging, GitHub integration, context menus,
 
 ```bash
 npm install
-npm run build
+npm run verify
 # Install locally:
 npm run package
 code --install-extension teapot-vscode-*.vsix

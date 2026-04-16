@@ -1,5 +1,5 @@
 import { build, context } from 'esbuild';
-import { mkdirSync, copyFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 
 const watch = process.argv.includes('--watch');
 
@@ -27,7 +27,6 @@ const webviewConfig = {
 };
 
 mkdirSync('out', { recursive: true });
-copyFileSync('src/webview/style.css', 'out/webview.css');
 
 if (watch) {
   const h = await context(hostConfig);

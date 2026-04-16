@@ -7,8 +7,13 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["SCM Providers", "Visualization"],
-  "activationEvents": ["onStartupFinished"],
+  "categories": [
+    "SCM Providers",
+    "Visualization"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "viewsContainers": {
@@ -49,6 +54,9 @@
   },
   "scripts": {
     "build": "node esbuild.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "verify": "npm test && npm run typecheck && npm run build",
     "watch": "node esbuild.mjs --watch",
     "package": "vsce package --no-dependencies",
     "vscode:prepublish": "npm run build"
@@ -58,6 +66,7 @@
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^2.24.0",
     "esbuild": "^0.20.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "vitest": "^4.1.4"
   }
 }
