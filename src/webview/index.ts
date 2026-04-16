@@ -61,6 +61,10 @@ stack.addEventListener('click', (event) => {
   controller.handleClick(event);
 });
 
+stack.addEventListener('dblclick', (event) => {
+  controller.handleDoubleClick(event);
+});
+
 viewport.addEventListener('scroll', () => {
   controller.handleScroll();
   syncScrollbar();

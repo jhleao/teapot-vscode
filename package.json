@@ -48,6 +48,11 @@
         "category": "Teapot"
       },
       {
+        "command": "teapot.checkoutBranch",
+        "title": "Checkout Branch",
+        "category": "Teapot"
+      },
+      {
         "command": "teapot.renameBranch",
         "title": "Rename Branch...",
         "category": "Teapot"
@@ -83,6 +88,11 @@
       ],
       "webview/context": [
         {
+          "command": "teapot.checkoutBranch",
+          "when": "webviewId == 'teapot.stackView' && webviewSection == 'branch-badge' && !teapotBranchIsCurrent",
+          "group": "0_primary@1"
+        },
+        {
           "command": "teapot.renameBranch",
           "when": "webviewId == 'teapot.stackView' && webviewSection == 'branch-badge'",
           "group": "1_modification@1"
@@ -116,6 +126,10 @@
       "commandPalette": [
         {
           "command": "teapot.copyBranchName",
+          "when": "false"
+        },
+        {
+          "command": "teapot.checkoutBranch",
           "when": "false"
         },
         {

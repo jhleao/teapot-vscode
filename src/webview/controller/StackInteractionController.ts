@@ -125,6 +125,28 @@ export class StackInteractionController {
     this.handleActionClick(action);
   }
 
+  handleDoubleClick(event: MouseEvent): void {
+    if (
+      this.awaitingHostSync ||
+      this.renderedState?.pendingRebase ||
+      this.drag.activeBranchRef
+    ) {
+      return;
+    }
+
+    const label = (event.target as HTMLElement).closest<HTMLElement>('.label.branch');
+    if (!label || label.classList.contains('current')) {
+      return;
+    }
+
+    const branchRef = label.dataset.branchRef;
+    if (!branchRef) {
+      return;
+    }
+
+    this.postMessage({ type: 'checkoutBranch', branchRef });
+  }
+
   handleMouseMove(event: MouseEvent): void {
     const currentState = this.renderedState;
     this.drag.lastPointerY = event.clientY;
@@ -154,19 +176,17 @@ export class StackInteractionController {
   }
 
   handleMouseUp(): void {
-    const hadPendingInteraction =
-      this.drag.pendingBranchRef !== null || this.drag.activeBranchRef !== null;
     const currentState = this.renderedState;
     const activeBranchRef = this.drag.activeBranchRef;
     const targetSha = this.drag.targetSha;
 
     this.resetDragSession();
 
-    if (!hadPendingInteraction) {
+    if (!activeBranchRef) {
       return;
     }
 
-    if (!currentState || !activeBranchRef || !targetSha) {
+    if (!currentState || !targetSha) {
       this.render();
       return;
     }

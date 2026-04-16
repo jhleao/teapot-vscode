@@ -54,4 +54,5 @@ export type WebviewToHostMessage =
   | { type: 'refresh' }
   | { type: 'submitRebaseIntent'; intent: RebaseIntent }
   | { type: 'confirmRebaseIntent' }
-  | { type: 'cancelRebaseIntent' };
+  | { type: 'cancelRebaseIntent' }
+  | { type: 'checkoutBranch'; branchRef: string };

@@ -11,6 +11,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('teapot.copyBranchName', (ctx: { branchRef: string }) => {
       provider.copyBranchName(ctx.branchRef);
     }),
+    vscode.commands.registerCommand('teapot.checkoutBranch', (ctx: { branchRef: string }) => {
+      provider.checkoutBranch(ctx.branchRef);
+    }),
     vscode.commands.registerCommand('teapot.renameBranch', (ctx: { branchRef: string }) => {
       provider.renameBranch(ctx.branchRef);
     }),

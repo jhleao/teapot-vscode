@@ -102,17 +102,39 @@ describe('createRebaseActionViewModel', () => {
 
 describe('buildBranchBadgeContext', () => {
   it('marks a normal branch as unprotected and carries the ref', () => {
-    expect(buildBranchBadgeContext({ branchRef: 'feature/xyz', isProtected: false })).toEqual({
+    expect(
+      buildBranchBadgeContext({
+        branchRef: 'feature/xyz',
+        isProtected: false,
+        isCurrent: false,
+      })
+    ).toEqual({
       webviewSection: 'branch-badge',
       preventDefaultContextMenuItems: true,
       branchRef: 'feature/xyz',
       teapotBranchProtected: false,
+      teapotBranchIsCurrent: false,
     });
   });
 
   it('marks current/trunk branches as protected so Delete is hidden', () => {
-    expect(buildBranchBadgeContext({ branchRef: 'main', isProtected: true })).toMatchObject({
+    expect(
+      buildBranchBadgeContext({ branchRef: 'main', isProtected: true, isCurrent: false })
+    ).toMatchObject({
       teapotBranchProtected: true,
+      teapotBranchIsCurrent: false,
+    });
+  });
+
+  it('flags the current branch so Checkout can be hidden', () => {
+    expect(
+      buildBranchBadgeContext({
+        branchRef: 'feature/xyz',
+        isProtected: true,
+        isCurrent: true,
+      })
+    ).toMatchObject({
+      teapotBranchIsCurrent: true,
     });
   });
 });

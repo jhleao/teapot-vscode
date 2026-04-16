@@ -151,10 +151,12 @@ function createBranchLabel(
     label.classList.add('current');
   }
   label.title = branchName;
+  label.dataset.branchRef = branchName;
   label.dataset.vscodeContext = JSON.stringify(
     buildBranchBadgeContext({
       branchRef: branchName,
       isProtected: isCurrent || isTrunkBranch,
+      isCurrent,
     })
   );
 
@@ -319,17 +321,20 @@ export interface BranchBadgeContext {
   preventDefaultContextMenuItems: true;
   branchRef: string;
   teapotBranchProtected: boolean;
+  teapotBranchIsCurrent: boolean;
 }
 
 export function buildBranchBadgeContext(options: {
   branchRef: string;
   isProtected: boolean;
+  isCurrent: boolean;
 }): BranchBadgeContext {
   return {
     webviewSection: 'branch-badge',
     preventDefaultContextMenuItems: true,
     branchRef: options.branchRef,
     teapotBranchProtected: options.isProtected,
+    teapotBranchIsCurrent: options.isCurrent,
   };
 }
 

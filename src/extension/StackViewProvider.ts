@@ -53,6 +53,10 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     this.enqueueOperation(() => this.performCopyBranchName(branchRef));
   }
 
+  checkoutBranch(branchRef: string): void {
+    this.enqueueOperation(() => this.performCheckoutBranch(branchRef));
+  }
+
   renameBranch(branchRef: string): void {
     this.enqueueOperation(() => this.performRenameBranch(branchRef));
   }
@@ -112,6 +116,9 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         return;
       case 'cancelRebaseIntent':
         await this.cancelRebaseIntent();
+        return;
+      case 'checkoutBranch':
+        await this.performCheckoutBranch(message.branchRef);
         return;
     }
   }
@@ -196,6 +203,16 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     const workspaceRoot = this.getWorkspaceRoot();
     const state = await this.getStateForUiInteraction(workspaceRoot);
     await this.presentState(state, workspaceRoot);
+  }
+
+  private async performCheckoutBranch(branchRef: string): Promise<void> {
+    const git = await this.openGit();
+    if (!git) {
+      return;
+    }
+    await git.checkout(branchRef);
+    void vscode.commands.executeCommand('git.refresh');
+    await this.refresh();
   }
 
   private async performCopyBranchName(branchRef: string): Promise<void> {
