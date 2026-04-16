@@ -138,6 +138,31 @@ export class GitClient {
     await this.run(['checkout', '--quiet', ref]);
   }
 
+  async deleteBranch(name: string): Promise<void> {
+    await this.run(['branch', '-D', name]);
+  }
+
+  async createBranchAt(name: string, sha: string): Promise<void> {
+    await this.run(['branch', name, sha]);
+  }
+
+  async renameBranch(oldName: string, newName: string): Promise<void> {
+    await this.run(['branch', '-m', oldName, newName]);
+  }
+
+  async amendCommitMessage(message: string): Promise<void> {
+    await this.run(['commit', '--amend', '-m', message, '--allow-empty']);
+  }
+
+  async removeWorktree(path: string, options: { force?: boolean } = {}): Promise<void> {
+    const args = ['worktree', 'remove'];
+    if (options.force) {
+      args.push('--force');
+    }
+    args.push(path);
+    await this.run(args);
+  }
+
   async rebaseBranchOnto(options: {
     branchRef: string;
     upstreamSha: string;

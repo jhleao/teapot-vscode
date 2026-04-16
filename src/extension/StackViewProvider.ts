@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { GitClient } from '../git/gitClient';
 import { GitStackBuilder } from '../git/stackBuilder';
 import type { HostToWebviewMessage, RebaseIntent, StackState, WebviewToHostMessage } from '../protocol';
 import { GitRebaseExecutor } from '../rebase/executor';
@@ -15,7 +16,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   private watchedRepoRoot: string | null = null;
   private cachedStackState: StackState | null = null;
   private pendingRebase: RebaseIntent | null = null;
-  private webviewMessageChain: Promise<void> = Promise.resolve();
+  private operationChain: Promise<void> = Promise.resolve();
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.disposables.push(
@@ -37,7 +38,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
     this.viewDisposables.push(
       view.webview.onDidReceiveMessage((message: WebviewToHostMessage) => {
-        this.enqueueWebviewMessage(message);
+        this.enqueueOperation(() => this.handleWebviewMessage(message));
       }),
       view.onDidDispose(() => {
         this.disposeViewState();
@@ -46,6 +47,26 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
     this.attachGitWatcher();
     await this.refresh();
+  }
+
+  copyBranchName(branchRef: string): void {
+    this.enqueueOperation(() => this.performCopyBranchName(branchRef));
+  }
+
+  renameBranch(branchRef: string): void {
+    this.enqueueOperation(() => this.performRenameBranch(branchRef));
+  }
+
+  deleteBranch(branchRef: string): void {
+    this.enqueueOperation(() => this.performDeleteBranch(branchRef));
+  }
+
+  amendCommitMessage(commitSha: string, currentMessage: string): void {
+    this.enqueueOperation(() => this.performAmendCommitMessage(commitSha, currentMessage));
+  }
+
+  deleteWorktree(branchRef: string, worktreePath: string): void {
+    this.enqueueOperation(() => this.performDeleteWorktree(branchRef, worktreePath));
   }
 
   async refresh(): Promise<void> {
@@ -68,10 +89,10 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
   }
 
-  private enqueueWebviewMessage(message: WebviewToHostMessage): void {
-    this.webviewMessageChain = this.webviewMessageChain
+  private enqueueOperation(operation: () => Promise<void>): void {
+    this.operationChain = this.operationChain
       .catch(() => undefined)
-      .then(() => this.handleWebviewMessage(message))
+      .then(operation)
       .catch((error) => {
         void vscode.window.showErrorMessage(toErrorMessage(error));
       });
@@ -175,6 +196,176 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     const workspaceRoot = this.getWorkspaceRoot();
     const state = await this.getStateForUiInteraction(workspaceRoot);
     await this.presentState(state, workspaceRoot);
+  }
+
+  private async performCopyBranchName(branchRef: string): Promise<void> {
+    await vscode.env.clipboard.writeText(branchRef);
+    void vscode.window.showInformationMessage(`Copied "${branchRef}" to clipboard`);
+  }
+
+  private async performRenameBranch(branchRef: string): Promise<void> {
+    const git = await this.openGit();
+    if (!git) {
+      return;
+    }
+
+    const existingBranches = new Set(
+      (await git.listLocalBranches()).map((branch) => branch.name)
+    );
+
+    const newName = await vscode.window.showInputBox({
+      title: 'Rename Branch',
+      prompt: `Rename "${branchRef}" to...`,
+      value: branchRef,
+      valueSelection: [0, branchRef.length],
+      validateInput: (value) => {
+        const trimmed = value.trim();
+        if (!trimmed) {
+          return 'Branch name cannot be empty';
+        }
+        if (/\s/.test(trimmed)) {
+          return 'Branch name cannot contain whitespace';
+        }
+        if (trimmed === branchRef) {
+          return 'Branch name is unchanged';
+        }
+        if (existingBranches.has(trimmed)) {
+          return `A branch named "${trimmed}" already exists`;
+        }
+        return null;
+      },
+    });
+
+    if (!newName) {
+      return;
+    }
+
+    await git.renameBranch(branchRef, newName.trim());
+    await this.refresh();
+  }
+
+  private async performDeleteBranch(branchRef: string): Promise<void> {
+    const workspaceRoot = this.getWorkspaceRoot();
+    const state = await this.getStateForUiInteraction(workspaceRoot);
+    const branch = state.branches.find((candidate) => candidate.ref === branchRef);
+    if (!branch) {
+      void vscode.window.showErrorMessage(`Branch "${branchRef}" not found.`);
+      return;
+    }
+    if (branch.isCurrent) {
+      void vscode.window.showErrorMessage(
+        `Cannot delete "${branchRef}" because it is the current branch.`
+      );
+      return;
+    }
+    if (branch.isTrunk) {
+      void vscode.window.showErrorMessage(`Cannot delete the trunk branch "${branchRef}".`);
+      return;
+    }
+
+    const git = await this.openGit();
+    if (!git) {
+      return;
+    }
+
+    const savedSha = branch.headSha;
+    await git.deleteBranch(branchRef);
+    await this.refresh();
+
+    const choice = await vscode.window.showInformationMessage(
+      `Branch "${branchRef}" deleted`,
+      'Undo'
+    );
+    if (choice === 'Undo') {
+      this.enqueueOperation(async () => {
+        const undoGit = await this.openGit();
+        if (!undoGit) {
+          return;
+        }
+        await undoGit.createBranchAt(branchRef, savedSha);
+        await this.refresh();
+      });
+    }
+  }
+
+  private async performAmendCommitMessage(
+    commitSha: string,
+    currentMessage: string
+  ): Promise<void> {
+    const workspaceRoot = this.getWorkspaceRoot();
+    const state = await this.getStateForUiInteraction(workspaceRoot);
+    const currentBranch = state.branches.find((branch) => branch.isCurrent);
+    if (!currentBranch || currentBranch.headSha !== commitSha) {
+      void vscode.window.showWarningMessage(
+        'Cannot amend: HEAD is no longer on this commit.'
+      );
+      return;
+    }
+
+    const newMessage = await vscode.window.showInputBox({
+      title: 'Amend Commit Message',
+      prompt: 'Rewrites the current commit with a new message',
+      value: currentMessage,
+      validateInput: (value) => (value.trim() ? null : 'Commit message cannot be empty'),
+    });
+
+    if (newMessage === undefined) {
+      return;
+    }
+
+    const git = await this.openGit();
+    if (!git) {
+      return;
+    }
+
+    await git.amendCommitMessage(newMessage.trim());
+    await this.refresh();
+  }
+
+  private async performDeleteWorktree(branchRef: string, worktreePath: string): Promise<void> {
+    const git = await this.openGit();
+    if (!git) {
+      return;
+    }
+
+    try {
+      await git.removeWorktree(worktreePath);
+    } catch (error) {
+      const message = toErrorMessage(error);
+      const looksDirty = /dirty|modified|contains|uncommitted|untracked|locked/i.test(message);
+      if (!looksDirty) {
+        throw error;
+      }
+
+      const choice = await vscode.window.showWarningMessage(
+        `Worktree at "${worktreePath}" has uncommitted or untracked changes.`,
+        { modal: true, detail: message },
+        'Force Delete'
+      );
+      if (choice !== 'Force Delete') {
+        return;
+      }
+      await git.removeWorktree(worktreePath, { force: true });
+    }
+
+    await this.refresh();
+    void vscode.window.showInformationMessage(
+      `Removed worktree for "${branchRef}"`
+    );
+  }
+
+  private async openGit(): Promise<GitClient | null> {
+    const workspaceRoot = this.getWorkspaceRoot();
+    if (!workspaceRoot) {
+      void vscode.window.showErrorMessage('No workspace folder open');
+      return null;
+    }
+    const git = await GitClient.open(workspaceRoot);
+    if (!git) {
+      void vscode.window.showErrorMessage('Not a git repository');
+      return null;
+    }
+    return git;
   }
 
   private async loadStackState(workspaceRoot: string | null): Promise<StackState> {

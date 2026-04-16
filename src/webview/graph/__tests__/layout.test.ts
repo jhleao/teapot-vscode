@@ -18,6 +18,7 @@ describe('layoutRows', () => {
           isRemote: false,
           isCurrent: false,
           worktreePath: null,
+          worktreePeacockColor: null,
         },
         {
           ref: 'feature',
@@ -34,6 +35,7 @@ describe('layoutRows', () => {
           isRemote: false,
           isCurrent: false,
           worktreePath: null,
+          worktreePeacockColor: null,
         },
         {
           ref: 'fixup',
@@ -47,6 +49,7 @@ describe('layoutRows', () => {
           isRemote: false,
           isCurrent: true,
           worktreePath: null,
+          worktreePeacockColor: null,
         },
       ],
       trunk: 'main',
@@ -84,6 +87,7 @@ describe('layoutRows', () => {
           isRemote: false,
           isCurrent: false,
           worktreePath: null,
+          worktreePeacockColor: null,
         },
         {
           ref: 'aaa-feature',
@@ -97,6 +101,7 @@ describe('layoutRows', () => {
           isRemote: false,
           isCurrent: false,
           worktreePath: null,
+          worktreePeacockColor: null,
         },
         {
           ref: 'zzz-feature',
@@ -110,6 +115,7 @@ describe('layoutRows', () => {
           isRemote: false,
           isCurrent: true,
           worktreePath: null,
+          worktreePeacockColor: null,
         },
       ],
       trunk: 'main',
@@ -147,6 +153,7 @@ describe('layoutRows', () => {
           isRemote: false,
           isCurrent: false,
           worktreePath: null,
+          worktreePeacockColor: null,
         },
         {
           ref: 'future-feature',
@@ -160,6 +167,7 @@ describe('layoutRows', () => {
           isRemote: false,
           isCurrent: false,
           worktreePath: null,
+          worktreePeacockColor: null,
         },
         {
           ref: 'legacy-feature',
@@ -173,6 +181,7 @@ describe('layoutRows', () => {
           isRemote: false,
           isCurrent: false,
           worktreePath: null,
+          worktreePeacockColor: null,
         },
       ],
       trunk: 'main',
@@ -220,6 +229,7 @@ describe('layoutRows', () => {
           isRemote: false,
           isCurrent: false,
           worktreePath: null,
+          worktreePeacockColor: null,
         },
         {
           ref: 'feature',
@@ -236,6 +246,7 @@ describe('layoutRows', () => {
           isRemote: false,
           isCurrent: false,
           worktreePath: null,
+          worktreePeacockColor: null,
         },
         {
           ref: 'fixup',
@@ -249,6 +260,7 @@ describe('layoutRows', () => {
           isRemote: false,
           isCurrent: true,
           worktreePath: null,
+          worktreePeacockColor: null,
         },
       ],
       trunk: 'main',
@@ -291,6 +303,7 @@ describe('layoutRows', () => {
           isRemote: false,
           isCurrent: true,
           worktreePath: null,
+          worktreePeacockColor: null,
         },
         {
           ref: 'feature',
@@ -304,6 +317,7 @@ describe('layoutRows', () => {
           isRemote: false,
           isCurrent: false,
           worktreePath: null,
+          worktreePeacockColor: null,
         },
       ],
       trunk: 'main',
@@ -332,5 +346,52 @@ describe('layoutRows', () => {
       rebaseStatus: 'prompting',
       showsRebaseActions: true,
     });
+  });
+
+  it('flags trunk rows with isTrunkBranch and non-trunk rows without it', () => {
+    const state: StackState = {
+      branches: [
+        {
+          ref: 'main',
+          headSha: 'm1',
+          baseSha: 'm1',
+          parentRef: null,
+          childRefs: ['feature'],
+          ownedShas: ['m1'],
+          commits: [{ sha: 'm1', message: 'main', author: 'dev', timeMs: 1, parentSha: '' }],
+          isTrunk: true,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+        },
+        {
+          ref: 'feature',
+          headSha: 'f1',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: [],
+          ownedShas: ['f1'],
+          commits: [{ sha: 'f1', message: 'feature', author: 'dev', timeMs: 2, parentSha: 'm1' }],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: true,
+          worktreePath: null,
+          worktreePeacockColor: null,
+        },
+      ],
+      trunk: 'main',
+      current: 'feature',
+      repoRoot: '/repo',
+      error: null,
+      pendingRebase: null,
+    };
+
+    const rows = layoutRows(state);
+    const mainRow = rows.find((row) => row.kind === 'commit' && row.branchName === 'main');
+    const featureRow = rows.find((row) => row.kind === 'commit' && row.branchName === 'feature');
+
+    expect(mainRow).toMatchObject({ isTrunkBranch: true });
+    expect(featureRow).toMatchObject({ isTrunkBranch: false, isCurrent: true });
   });
 });

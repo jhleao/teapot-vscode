@@ -67,6 +67,13 @@ function renderRow(
   }
   if (row.kind === 'commit' && row.commit) {
     rowElement.dataset.commitSha = row.commit.sha;
+    rowElement.dataset.vscodeContext = JSON.stringify(
+      buildCommitRowContext({
+        commitSha: row.commit.sha,
+        currentMessage: row.commit.message,
+        isHead: row.isCurrent,
+      })
+    );
   }
   if (row.isDraggable) {
     rowElement.dataset.dragBranchRef = row.branchName;
@@ -85,7 +92,15 @@ function renderRow(
   rowElement.append(graphContainer);
 
   if (row.kind === 'commit' && row.isBranchTip) {
-    rowElement.append(createRowLabels(row.branchName, row.isCurrent, row.worktreePath));
+    rowElement.append(
+      createRowLabels(
+        row.branchName,
+        row.isCurrent,
+        row.isTrunkBranch,
+        row.worktreePath,
+        row.worktreePeacockColor
+      )
+    );
   }
 
   const subject = document.createElement('span');
@@ -112,24 +127,36 @@ function renderRow(
 function createRowLabels(
   branchName: string,
   isCurrent: boolean,
-  worktreePath: string | null
+  isTrunkBranch: boolean,
+  worktreePath: string | null,
+  worktreePeacockColor: string | null
 ): HTMLElement {
   const container = document.createElement('div');
   container.className = 'label-container';
-  container.append(createBranchLabel(branchName, isCurrent));
+  container.append(createBranchLabel(branchName, isCurrent, isTrunkBranch));
   if (worktreePath) {
-    container.append(createWorktreeLabel(worktreePath));
+    container.append(createWorktreeLabel(branchName, worktreePath, worktreePeacockColor));
   }
   return container;
 }
 
-function createBranchLabel(branchName: string, isCurrent: boolean): HTMLElement {
+function createBranchLabel(
+  branchName: string,
+  isCurrent: boolean,
+  isTrunkBranch: boolean
+): HTMLElement {
   const label = document.createElement('span');
   label.className = 'label branch';
   if (isCurrent) {
     label.classList.add('current');
   }
   label.title = branchName;
+  label.dataset.vscodeContext = JSON.stringify(
+    buildBranchBadgeContext({
+      branchRef: branchName,
+      isProtected: isCurrent || isTrunkBranch,
+    })
+  );
 
   const text = document.createElement('span');
   text.className = 'label-text';
@@ -139,10 +166,21 @@ function createBranchLabel(branchName: string, isCurrent: boolean): HTMLElement 
   return label;
 }
 
-function createWorktreeLabel(worktreePath: string): HTMLElement {
+function createWorktreeLabel(
+  branchRef: string,
+  worktreePath: string,
+  peacockColor: string | null
+): HTMLElement {
   const label = document.createElement('span');
   label.className = 'label worktree';
   label.title = worktreePath;
+  label.dataset.vscodeContext = JSON.stringify(
+    buildWorktreeBadgeContext({ branchRef, worktreePath })
+  );
+
+  if (peacockColor) {
+    applyPeacockColor(label, peacockColor);
+  }
 
   const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   icon.setAttribute('class', 'label-icon');
@@ -164,6 +202,69 @@ function createWorktreeLabel(worktreePath: string): HTMLElement {
 
   label.append(icon, text);
   return label;
+}
+
+function applyPeacockColor(label: HTMLElement, peacockColor: string): void {
+  const normalized = normalizeCssColor(peacockColor);
+  if (!normalized) {
+    return;
+  }
+  label.classList.add('peacock');
+  label.style.setProperty('--peacock-color', normalized);
+  const foreground = pickReadableForeground(normalized);
+  if (foreground) {
+    label.style.setProperty('--peacock-foreground', foreground);
+  }
+}
+
+export function normalizeCssColor(color: string): string | null {
+  const trimmed = color.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  // Peacock often stores bare hex like "d0d0d0" — CSS requires the leading '#'.
+  if (/^[0-9a-f]{3,8}$/i.test(trimmed)) {
+    return `#${trimmed}`;
+  }
+
+  return trimmed;
+}
+
+export function pickReadableForeground(color: string): string | null {
+  const rgb = parseHexColor(color);
+  if (!rgb) {
+    return null;
+  }
+
+  const [r, g, b] = rgb;
+  // Rec. 601 luma — cheap, matches how Peacock itself decides light/dark backgrounds
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.55 ? '#000000' : '#ffffff';
+}
+
+function parseHexColor(color: string): [number, number, number] | null {
+  const match = /^#?([0-9a-f]{3,8})$/i.exec(color.trim());
+  if (!match) {
+    return null;
+  }
+
+  const hex = match[1];
+  if (hex.length === 3 || hex.length === 4) {
+    const r = parseInt(hex[0] + hex[0], 16);
+    const g = parseInt(hex[1] + hex[1], 16);
+    const b = parseInt(hex[2] + hex[2], 16);
+    return [r, g, b];
+  }
+
+  if (hex.length === 6 || hex.length === 8) {
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    return [r, g, b];
+  }
+
+  return null;
 }
 
 function basename(path: string): string {
@@ -211,6 +312,66 @@ function getPendingTargetLabel(pendingRebase: RebaseIntent | null): string {
   }
 
   return pendingRebase.targetBranchRef ?? pendingRebase.targetBaseSha.slice(0, 7);
+}
+
+export interface BranchBadgeContext {
+  webviewSection: 'branch-badge';
+  preventDefaultContextMenuItems: true;
+  branchRef: string;
+  teapotBranchProtected: boolean;
+}
+
+export function buildBranchBadgeContext(options: {
+  branchRef: string;
+  isProtected: boolean;
+}): BranchBadgeContext {
+  return {
+    webviewSection: 'branch-badge',
+    preventDefaultContextMenuItems: true,
+    branchRef: options.branchRef,
+    teapotBranchProtected: options.isProtected,
+  };
+}
+
+export interface WorktreeBadgeContext {
+  webviewSection: 'worktree-badge';
+  preventDefaultContextMenuItems: true;
+  branchRef: string;
+  worktreePath: string;
+}
+
+export function buildWorktreeBadgeContext(options: {
+  branchRef: string;
+  worktreePath: string;
+}): WorktreeBadgeContext {
+  return {
+    webviewSection: 'worktree-badge',
+    preventDefaultContextMenuItems: true,
+    branchRef: options.branchRef,
+    worktreePath: options.worktreePath,
+  };
+}
+
+export interface CommitRowContext {
+  webviewSection: 'commit-row';
+  preventDefaultContextMenuItems: true;
+  commitSha: string;
+  currentMessage: string;
+  teapotCommitIsHead: boolean;
+}
+
+export function buildCommitRowContext(options: {
+  commitSha: string;
+  currentMessage: string;
+  isHead: boolean;
+}): CommitRowContext {
+  return {
+    webviewSection: 'commit-row',
+    preventDefaultContextMenuItems: true,
+    commitSha: options.commitSha,
+    currentMessage: options.currentMessage,
+    teapotCommitIsHead: options.isHead,
+  };
 }
 
 export function createRebaseActionViewModel(options: {

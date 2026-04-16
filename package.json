@@ -41,6 +41,36 @@
         "command": "teapot.refresh",
         "title": "Teapot: Refresh",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "teapot.copyBranchName",
+        "title": "Copy Branch Name",
+        "category": "Teapot"
+      },
+      {
+        "command": "teapot.renameBranch",
+        "title": "Rename Branch...",
+        "category": "Teapot"
+      },
+      {
+        "command": "teapot.deleteBranch",
+        "title": "Delete Branch...",
+        "category": "Teapot"
+      },
+      {
+        "command": "teapot.amendCommitMessage",
+        "title": "Amend Commit Message...",
+        "category": "Teapot"
+      },
+      {
+        "command": "teapot.openWorktreeInNewWindow",
+        "title": "Open Worktree in New Window",
+        "category": "Teapot"
+      },
+      {
+        "command": "teapot.deleteWorktree",
+        "title": "Delete Worktree...",
+        "category": "Teapot"
       }
     ],
     "menus": {
@@ -49,6 +79,64 @@
           "command": "teapot.refresh",
           "when": "view == teapot.stackView",
           "group": "navigation"
+        }
+      ],
+      "webview/context": [
+        {
+          "command": "teapot.renameBranch",
+          "when": "webviewId == 'teapot.stackView' && webviewSection == 'branch-badge'",
+          "group": "1_modification@1"
+        },
+        {
+          "command": "teapot.deleteBranch",
+          "when": "webviewId == 'teapot.stackView' && webviewSection == 'branch-badge' && !teapotBranchProtected",
+          "group": "1_modification@2"
+        },
+        {
+          "command": "teapot.amendCommitMessage",
+          "when": "webviewId == 'teapot.stackView' && webviewSection == 'commit-row' && teapotCommitIsHead",
+          "group": "1_modification@1"
+        },
+        {
+          "command": "teapot.copyBranchName",
+          "when": "webviewId == 'teapot.stackView' && webviewSection == 'branch-badge'",
+          "group": "9_cutcopypaste@1"
+        },
+        {
+          "command": "teapot.openWorktreeInNewWindow",
+          "when": "webviewId == 'teapot.stackView' && webviewSection == 'worktree-badge'",
+          "group": "1_navigation@1"
+        },
+        {
+          "command": "teapot.deleteWorktree",
+          "when": "webviewId == 'teapot.stackView' && webviewSection == 'worktree-badge'",
+          "group": "2_modification@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "teapot.copyBranchName",
+          "when": "false"
+        },
+        {
+          "command": "teapot.renameBranch",
+          "when": "false"
+        },
+        {
+          "command": "teapot.deleteBranch",
+          "when": "false"
+        },
+        {
+          "command": "teapot.amendCommitMessage",
+          "when": "false"
+        },
+        {
+          "command": "teapot.openWorktreeInNewWindow",
+          "when": "false"
+        },
+        {
+          "command": "teapot.deleteWorktree",
+          "when": "false"
         }
       ]
     }

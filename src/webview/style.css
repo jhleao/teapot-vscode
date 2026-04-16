@@ -134,15 +134,6 @@ body {
   flex-shrink: 0;
 }
 
-.dragging-rebase,
-.dragging-rebase * {
-  cursor: grabbing !important;
-}
-
-.row.drag-source {
-  cursor: grab;
-}
-
 .row:hover {
   background: var(--vscode-list-hoverBackground);
 }
@@ -239,7 +230,14 @@ body {
   border: 1px solid
     color-mix(in srgb, var(--vscode-descriptionForeground) 35%, transparent);
   gap: 3px;
-  padding: 0 5px;
+  padding: 0 8px;
+  border-radius: 9999px;
+}
+
+.label.worktree.peacock {
+  background: var(--peacock-color);
+  border-color: var(--peacock-color);
+  color: var(--peacock-foreground, var(--vscode-foreground));
 }
 
 .label.worktree .label-text {

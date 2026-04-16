@@ -28,7 +28,7 @@ export function renderStackWebviewHtml(
   <link rel="stylesheet" href="${styleUri}" />
   <title>Teapot Stack</title>
 </head>
-<body>
+<body data-vscode-context='{"preventDefaultContextMenuItems": true}'>
   <div id="root">
     <div id="viewport">
       <div id="stack"></div>

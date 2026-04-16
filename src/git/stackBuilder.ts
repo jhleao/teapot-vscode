@@ -1,5 +1,6 @@
 import type { StackBranch, StackState } from '../protocol';
 import { GitClient, type LocalBranchHead, type WorktreeInfo } from './gitClient';
+import { PeacockColorUtils } from './peacockColor';
 import { selectTrunk } from './trunk';
 
 const DEFAULT_TRUNK_COMMIT_LIMIT = 200;
@@ -43,9 +44,13 @@ export class GitStackBuilder {
       const childRefs = buildChildIndex(topology);
       const trunkCommitLimit = await determineTrunkCommitLimit(queries, topology, trunk);
       const worktreePathByBranchRef = buildWorktreePathIndex(worktrees, repoRoot);
+      const peacockColorByWorktreePath = await buildPeacockColorIndex(
+        worktreePathByBranchRef
+      );
 
       const stackBranches = await Promise.all(
         topology.map(async ({ branch, parentRef, parentHeadSha, baseSha }) => {
+          const worktreePath = worktreePathByBranchRef.get(branch.name) ?? null;
           return createStackBranch({
             git,
             branch,
@@ -56,7 +61,10 @@ export class GitStackBuilder {
             current,
             trunk,
             trunkCommitLimit,
-            worktreePath: worktreePathByBranchRef.get(branch.name) ?? null,
+            worktreePath,
+            worktreePeacockColor: worktreePath
+              ? peacockColorByWorktreePath.get(worktreePath) ?? null
+              : null,
           });
         })
       );
@@ -89,6 +97,7 @@ async function createStackBranch(params: {
   trunk: string | null;
   trunkCommitLimit: number;
   worktreePath: string | null;
+  worktreePeacockColor: string | null;
 }): Promise<StackBranch> {
   const {
     git,
@@ -101,6 +110,7 @@ async function createStackBranch(params: {
     trunk,
     trunkCommitLimit,
     worktreePath,
+    worktreePeacockColor,
   } = params;
   const isTrunk = branch.name === trunk;
 
@@ -122,7 +132,20 @@ async function createStackBranch(params: {
     isRemote: false,
     isCurrent: branch.name === current,
     worktreePath,
+    worktreePeacockColor,
   };
+}
+
+async function buildPeacockColorIndex(
+  worktreePathByBranchRef: Map<string, string>
+): Promise<Map<string, string | null>> {
+  const uniquePaths = new Set(worktreePathByBranchRef.values());
+  const entries = await Promise.all(
+    [...uniquePaths].map(async (path) => {
+      return [path, await PeacockColorUtils.readForWorktree(path)] as const;
+    })
+  );
+  return new Map(entries);
 }
 
 function buildWorktreePathIndex(

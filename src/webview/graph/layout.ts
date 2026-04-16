@@ -28,12 +28,14 @@ export interface RowModel {
   commit?: RowCommit;
   isCurrent: boolean;
   isBranchTip: boolean;
+  isTrunkBranch: boolean;
   hasTop: boolean;
   hasBottom: boolean;
   rebaseStatus: 'prompting' | 'idle' | null;
   showsRebaseActions: boolean;
   isDraggable: boolean;
   worktreePath: string | null;
+  worktreePeacockColor: string | null;
 }
 
 export function layoutRows(state: StackState): RowModel[] {
@@ -98,12 +100,14 @@ export function layoutRows(state: StackState): RowModel[] {
         passThrough,
         isCurrent: branch.isCurrent,
         isBranchTip: true,
+        isTrunkBranch: branch.isTrunk,
         hasTop: hasChildrenAbove,
         hasBottom: willRenderBranchHeader || !!branch.parentRef,
         rebaseStatus: getRebaseStatus(branch.headSha, promptingShas, idleShas),
         showsRebaseActions: actionCommitSha === branch.headSha,
         isDraggable: !branch.isTrunk && branch.ownedShas.length > 0,
         worktreePath: branch.worktreePath,
+        worktreePeacockColor: branch.worktreePeacockColor,
       });
     }
 
@@ -134,12 +138,14 @@ export function layoutRows(state: StackState): RowModel[] {
         },
         isCurrent: isBranchTip && branch.isCurrent,
         isBranchTip,
+        isTrunkBranch: branch.isTrunk,
         hasTop: isBranchTip ? hasChildrenAbove : true,
         hasBottom: isLastCommit ? willRenderBranchHeader || !!branch.parentRef : true,
         rebaseStatus: getRebaseStatus(commit.sha, promptingShas, idleShas),
         showsRebaseActions: actionCommitSha === commit.sha,
         isDraggable: isBranchTip && !branch.isTrunk && branch.ownedShas.length > 0,
         worktreePath: isBranchTip ? branch.worktreePath : null,
+        worktreePeacockColor: isBranchTip ? branch.worktreePeacockColor : null,
       });
     }
 
@@ -153,12 +159,14 @@ export function layoutRows(state: StackState): RowModel[] {
         parentLane,
         isCurrent: false,
         isBranchTip: false,
+        isTrunkBranch: branch.isTrunk,
         hasTop: true,
         hasBottom: true,
         rebaseStatus: null,
         showsRebaseActions: false,
         isDraggable: false,
         worktreePath: null,
+        worktreePeacockColor: null,
       });
     }
   };

@@ -18,6 +18,7 @@ export interface StackBranch {
   isRemote: boolean;
   isCurrent: boolean;
   worktreePath: string | null;
+  worktreePeacockColor: string | null;
 }
 
 export interface RebaseIntentNode {
