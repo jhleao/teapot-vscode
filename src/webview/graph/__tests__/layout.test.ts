@@ -58,6 +58,7 @@ describe('layoutRows', () => {
       repoRoot: '/repo',
       error: null,
       pendingRebase: null,
+    activeRebase: null,
     };
 
     const rows = layoutRows(state);
@@ -133,6 +134,7 @@ describe('layoutRows', () => {
       repoRoot: '/repo',
       error: null,
       pendingRebase: null,
+    activeRebase: null,
     };
 
     const rows = layoutRows(state);
@@ -227,6 +229,7 @@ describe('layoutRows', () => {
       repoRoot: '/repo',
       error: null,
       pendingRebase: null,
+    activeRebase: null,
     };
 
     const rows = layoutRows(state);
@@ -305,6 +308,7 @@ describe('layoutRows', () => {
       repoRoot: '/repo',
       error: null,
       pendingRebase: null,
+    activeRebase: null,
     };
 
     const rows = layoutRows(state);
@@ -371,6 +375,7 @@ describe('layoutRows', () => {
       repoRoot: '/repo',
       error: null,
       pendingRebase: null,
+    activeRebase: null,
     };
 
     const rows = layoutRows(state);
@@ -450,6 +455,7 @@ describe('layoutRows', () => {
       repoRoot: '/repo',
       error: null,
       pendingRebase: null,
+    activeRebase: null,
     };
 
     const rows = layoutRows(state);
@@ -516,6 +522,7 @@ describe('layoutRows', () => {
         targetBaseSha: 'm2',
         targetBranchRef: 'main',
       },
+      activeRebase: null,
     };
 
     const rows = layoutRows(state);
@@ -566,6 +573,7 @@ describe('layoutRows', () => {
       repoRoot: '/repo',
       error: null,
       pendingRebase: null,
+    activeRebase: null,
     };
 
     const rows = layoutRows(state);
@@ -623,6 +631,7 @@ describe('layoutRows', () => {
       repoRoot: '/repo',
       error: null,
       pendingRebase: null,
+    activeRebase: null,
     };
 
     const rows = layoutRows(state);
@@ -692,6 +701,7 @@ describe('layoutRows', () => {
       repoRoot: '/repo',
       error: null,
       pendingRebase: null,
+    activeRebase: null,
     };
 
     const rows = layoutRows(state);
@@ -758,6 +768,7 @@ describe('layoutRows', () => {
       repoRoot: '/repo',
       error: null,
       pendingRebase: null,
+    activeRebase: null,
     };
 
     const rows = layoutRows(state);
@@ -839,6 +850,7 @@ describe('layoutRows', () => {
       repoRoot: '/repo',
       error: null,
       pendingRebase: null,
+    activeRebase: null,
     };
 
     const rows = layoutRows(state);
@@ -891,6 +903,7 @@ describe('layoutRows', () => {
       repoRoot: '/repo',
       error: null,
       pendingRebase: null,
+    activeRebase: null,
     };
 
     const rows = layoutRows(state);
@@ -944,6 +957,7 @@ describe('layoutRows', () => {
       repoRoot: '/repo',
       error: null,
       pendingRebase: null,
+    activeRebase: null,
     };
 
     const intent: RebaseIntent = {
@@ -1034,6 +1048,7 @@ describe('layoutRows', () => {
       repoRoot: '/repo',
       error: null,
       pendingRebase: null,
+    activeRebase: null,
     };
 
     const intent: RebaseIntent = {
@@ -1122,6 +1137,7 @@ describe('layoutRows', () => {
       repoRoot: '/repo',
       error: null,
       pendingRebase: null,
+    activeRebase: null,
     };
 
     // Simulate the buggy pre-fix intent that targets the collapsed sibling
@@ -1202,6 +1218,7 @@ describe('layoutRows', () => {
       repoRoot: '/repo',
       error: null,
       pendingRebase: null,
+    activeRebase: null,
     };
 
     const intent: RebaseIntent = {
@@ -1276,6 +1293,7 @@ describe('layoutRows', () => {
       repoRoot: '/repo',
       error: null,
       pendingRebase: null,
+    activeRebase: null,
     };
 
     const rows = layoutRows(state);

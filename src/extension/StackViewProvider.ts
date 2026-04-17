@@ -16,9 +16,11 @@ import type {
   StackState,
   WebviewToHostMessage,
 } from '../protocol';
-import { GitRebaseExecutor } from '../rebase/executor';
+import { RebaseQueueExecutor, type QueueRunOutcome } from '../rebase/executor';
 import { isRebaseIntentValid } from '../rebase/intent';
 import { applyRebaseIntentToState } from '../rebase/project';
+import { QueueBuilderUtils } from '../rebase/queueBuilder';
+import { OperationQueueStore } from '../rebase/queueStore';
 import { GitHubAuthUtils } from '../github/auth';
 import { GitHubPrEnricher } from './githubPrEnricher';
 import { GitRefsWatcher } from './gitWatcher';
@@ -38,6 +40,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   private refreshTask: Promise<void> | null = null;
   private refreshPending = false;
   private refreshId = 0;
+  private reconciling = false;
   private readonly prEnricher = new GitHubPrEnricher();
 
   constructor(private readonly context: vscode.ExtensionContext) {
@@ -197,6 +200,12 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       case 'cancelRebaseIntent':
         await this.cancelRebaseIntent();
         return;
+      case 'continueRebase':
+        await this.performContinueRebase();
+        return;
+      case 'abortRebase':
+        await this.performAbortRebase();
+        return;
       case 'checkoutBranch':
         await this.performCheckoutBranch(message.branchRef);
         return;
@@ -284,14 +293,32 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       return;
     }
 
-    try {
-      await GitRebaseExecutor.execute(workspaceRoot, intent);
+    const git = await GitClient.open(workspaceRoot);
+    if (!git) {
+      return;
+    }
+
+    if (await this.rejectIfOperationInProgress(git, workspaceRoot)) {
       this.pendingRebase = null;
       await this.refresh();
-    } catch (error) {
-      void vscode.window.showErrorMessage(toErrorMessage(error));
-      await this.refresh();
+      return;
     }
+
+    const repoRoot = git.getRepoRoot();
+    const originalBranch = await git.getCurrentBranch();
+    const store = new OperationQueueStore(repoRoot);
+    const queue = QueueBuilderUtils.fromIntent(intent, {
+      repoRoot,
+      originalBranchRef: originalBranch,
+      label: `Rebase ${intent.root.branchRef}`,
+    });
+
+    this.pendingRebase = null;
+    await store.save(queue);
+
+    const executor = new RebaseQueueExecutor(repoRoot, store);
+    const outcome = await executor.runUntilBlocked(queue);
+    await this.handleQueueOutcome(outcome);
   }
 
   private async cancelRebaseIntent(): Promise<void> {
@@ -401,6 +428,11 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     }
 
     const repoRoot = state.repoRoot ?? git.getRepoRoot();
+
+    if (await this.rejectIfOperationInProgress(git, repoRoot)) {
+      return;
+    }
+
     const branchesByRef = new Map(state.branches.map((b) => [b.ref, b]));
     const subtrees: RebaseIntentNode[] = currentBranch.childRefs.map((ref) =>
       buildIntentNode(branchesByRef, ref)
@@ -410,18 +442,203 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     await git.amendChanges({ message: inputMessage || undefined });
     const newHead = await git.revParse('HEAD');
 
-    for (const subtree of subtrees) {
-      const intent: RebaseIntent = {
-        root: subtree,
-        targetBaseSha: newHead,
-        targetBranchRef: null,
-      };
-      await GitRebaseExecutor.execute(repoRoot, intent);
+    await this.clearScmInputValue(repoRoot);
+
+    if (subtrees.length === 0) {
+      void vscode.commands.executeCommand('git.refresh');
+      await this.refresh();
+      return;
     }
 
-    await this.clearScmInputValue(repoRoot);
+    const originalBranch = currentBranch.ref;
+    const store = new OperationQueueStore(repoRoot);
+    const queue = QueueBuilderUtils.fromSubtrees(
+      subtrees,
+      { kind: 'sha', sha: newHead },
+      {
+        repoRoot,
+        originalBranchRef: originalBranch,
+        label:
+          subtrees.length === 1
+            ? `Amend & rebase ${subtrees[0].branchRef}`
+            : `Amend & rebase ${subtrees.length} branches`,
+      }
+    );
+
+    await store.save(queue);
+    void vscode.commands.executeCommand('git.refresh');
+
+    const executor = new RebaseQueueExecutor(repoRoot, store);
+    const outcome = await executor.runUntilBlocked(queue);
+    await this.handleQueueOutcome(outcome);
+  }
+
+  private async performContinueRebase(): Promise<void> {
+    const workspaceRoot = this.getWorkspaceRoot();
+    if (!workspaceRoot) {
+      return;
+    }
+
+    const git = await GitClient.open(workspaceRoot);
+    if (!git) {
+      return;
+    }
+
+    const repoRoot = git.getRepoRoot();
+    const store = new OperationQueueStore(repoRoot);
+
+    try {
+      await git.rebaseContinue();
+    } catch (error) {
+      const message = toErrorMessage(error);
+      if (/no rebase in progress/i.test(message)) {
+        // Fall through — rebase may already be resolved externally.
+      } else if ((await git.hasActiveRebase()) !== null) {
+        void vscode.window.showErrorMessage(message);
+        await this.refresh();
+        return;
+      } else {
+        void vscode.window.showErrorMessage(message);
+        await store.clear();
+        await this.refresh();
+        return;
+      }
+    }
+
+    const queue = await store.load();
+    if (!queue) {
+      await this.refresh();
+      return;
+    }
+
+    const current = queue.steps[queue.cursor];
+    if (current?.kind === 'rebase-branch') {
+      try {
+        queue.completedHeads[current.id] = await git.revParse(current.branchRef);
+      } catch {
+        // If the branch somehow vanished, give up gracefully.
+        await store.clear();
+        await this.refresh();
+        return;
+      }
+      queue.cursor += 1;
+      await store.save(queue);
+    }
+
+    const executor = new RebaseQueueExecutor(repoRoot, store);
+    const outcome = await executor.runUntilBlocked(queue);
+    void vscode.commands.executeCommand('git.refresh');
+    await this.handleQueueOutcome(outcome);
+  }
+
+  private async performAbortRebase(): Promise<void> {
+    const workspaceRoot = this.getWorkspaceRoot();
+    if (!workspaceRoot) {
+      return;
+    }
+
+    const git = await GitClient.open(workspaceRoot);
+    if (!git) {
+      return;
+    }
+
+    const repoRoot = git.getRepoRoot();
+    const store = new OperationQueueStore(repoRoot);
+
+    try {
+      await git.rebaseAbort();
+    } catch (error) {
+      void vscode.window.showErrorMessage(toErrorMessage(error));
+    }
+
+    await store.clear();
     void vscode.commands.executeCommand('git.refresh');
     await this.refresh();
+  }
+
+  private async handleQueueOutcome(outcome: QueueRunOutcome): Promise<void> {
+    if (outcome.kind === 'error') {
+      void vscode.window.showErrorMessage(toErrorMessage(outcome.error));
+    }
+    void vscode.commands.executeCommand('git.refresh');
+    await this.refresh();
+  }
+
+  private async rejectIfOperationInProgress(
+    git: GitClient,
+    repoRoot: string
+  ): Promise<boolean> {
+    const store = new OperationQueueStore(repoRoot);
+    const [active, existing] = await Promise.all([git.hasActiveRebase(), store.load()]);
+    if (active !== null || existing !== null) {
+      void vscode.window.showErrorMessage(
+        'A teapot rebase is already in progress. Resolve it via Continue/Abort first.'
+      );
+      return true;
+    }
+    return false;
+  }
+
+  private async reconcileQueueIfIdle(workspaceRoot: string | null): Promise<void> {
+    if (this.reconciling || !workspaceRoot) {
+      return;
+    }
+
+    const git = await GitClient.open(workspaceRoot);
+    if (!git) {
+      return;
+    }
+
+    const repoRoot = git.getRepoRoot();
+    const store = new OperationQueueStore(repoRoot);
+    const queue = await store.load();
+    if (!queue) {
+      return;
+    }
+
+    if ((await git.hasActiveRebase()) !== null) {
+      return; // still paused; UI surfaces Abort/Continue
+    }
+
+    this.reconciling = true;
+    try {
+      const current = queue.steps[queue.cursor];
+      if (!current) {
+        await store.clear();
+        return;
+      }
+
+      if (current.kind === 'restore-head') {
+        const executor = new RebaseQueueExecutor(repoRoot, store);
+        const outcome = await executor.runUntilBlocked(queue);
+        await this.handleQueueOutcome(outcome);
+        return;
+      }
+
+      let currentHead: string | null;
+      try {
+        currentHead = await git.revParse(current.branchRef);
+      } catch {
+        currentHead = null;
+      }
+
+      if (currentHead === null || currentHead === current.preRebaseHeadSha) {
+        // External abort, or branch deleted — drop the queue.
+        await store.clear();
+        await this.refresh();
+        return;
+      }
+
+      // External continue — record head, advance, resume.
+      queue.completedHeads[current.id] = currentHead;
+      queue.cursor += 1;
+      await store.save(queue);
+      const executor = new RebaseQueueExecutor(repoRoot, store);
+      const outcome = await executor.runUntilBlocked(queue);
+      await this.handleQueueOutcome(outcome);
+    } finally {
+      this.reconciling = false;
+    }
   }
 
   private async readScmInputValue(repoRoot: string): Promise<string> {
@@ -829,6 +1046,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         repoRoot: null,
         error: 'No workspace folder open',
         pendingRebase: null,
+        activeRebase: null,
       };
       return this.cachedStackState;
     }
@@ -936,6 +1154,10 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
       if (workspaceRoot && !gitState.error && gitState.branches.length > 0) {
         void this.enrichAndPresent(gitState, workspaceRoot, myId);
+      }
+
+      if (workspaceRoot) {
+        void this.reconcileQueueIfIdle(workspaceRoot);
       }
     }
   }

@@ -1,5 +1,6 @@
-import type { StackBranch, StackState } from '../../protocol';
+import type { ActiveRebaseState, StackBranch, StackState } from '../../protocol';
 import { GitClient, type LocalBranchHead } from '../gitClient';
+import { OperationQueueStore } from '../../rebase/queueStore';
 import { selectTrunk } from '../trunk';
 import {
   buildChildRefsByParent,
@@ -64,6 +65,11 @@ export class GitStackStateLoader {
         })
       );
 
+      const activeRebase = await buildActiveRebaseState(
+        git,
+        new OperationQueueStore(repoRoot)
+      );
+
       return {
         branches: stackBranches,
         trunk: trunkRef,
@@ -71,6 +77,7 @@ export class GitStackStateLoader {
         repoRoot,
         error: null,
         pendingRebase: null,
+        activeRebase,
       };
     } catch (error) {
       return {
@@ -79,6 +86,32 @@ export class GitStackStateLoader {
       };
     }
   }
+}
+
+async function buildActiveRebaseState(
+  git: GitClient,
+  store: OperationQueueStore
+): Promise<ActiveRebaseState | null> {
+  const [inProgress, queue] = await Promise.all([git.hasActiveRebase(), store.load()]);
+  if (!inProgress && !queue) {
+    return null;
+  }
+
+  const nextStep =
+    queue && queue.cursor < queue.steps.length ? queue.steps[queue.cursor] : null;
+
+  return {
+    gitInProgress: inProgress !== null,
+    queued: queue !== null,
+    pendingStepCount: queue
+      ? Math.max(queue.steps.length - queue.cursor - 1, 0)
+      : 0,
+    currentStep:
+      nextStep?.kind === 'rebase-branch'
+        ? { branchRef: nextStep.branchRef, label: `Rebasing ${nextStep.branchRef}` }
+        : null,
+    headBranchRef: inProgress ? await git.readRebaseMergeHeadName() : null,
+  };
 }
 
 async function createStackBranch(params: {
@@ -138,6 +171,7 @@ function createErrorState(error: string): StackState {
     repoRoot: null,
     error,
     pendingRebase: null,
+    activeRebase: null,
   };
 }
 

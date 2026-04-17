@@ -3,11 +3,14 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { GitClient } from '../../git/gitClient';
 import { GitStackBuilder } from '../../git/stackBuilder';
-import { GitRebaseExecutor } from '../executor';
+import { RebaseQueueExecutor } from '../executor';
 import { createRebaseIntent } from '../intent';
+import { QueueBuilderUtils } from '../queueBuilder';
+import { OperationQueueStore } from '../queueStore';
 
-describe('GitRebaseExecutor', () => {
+describe('RebaseQueueExecutor', () => {
   const tempDirs: string[] = [];
 
   afterEach(() => {
@@ -49,7 +52,18 @@ describe('GitRebaseExecutor', () => {
         throw new Error('Expected rebase intent');
       }
 
-      await GitRebaseExecutor.execute(repoDir, intent);
+      const gitForOriginalBranch = await GitClient.open(repoDir);
+      const originalBranch = await gitForOriginalBranch!.getCurrentBranch();
+      const store = new OperationQueueStore(repoDir);
+      const queue = QueueBuilderUtils.fromIntent(intent, {
+        repoRoot: repoDir,
+        originalBranchRef: originalBranch,
+        label: 'test',
+      });
+      await store.save(queue);
+      const executor = new RebaseQueueExecutor(repoDir, store);
+      const outcome = await executor.runUntilBlocked(queue);
+      expect(outcome.kind).toBe('drained');
 
       const after = await GitStackBuilder.build(repoDir);
       const branchesByRef = new Map(after.branches.map((branch) => [branch.ref, branch]));

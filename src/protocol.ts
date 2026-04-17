@@ -44,6 +44,45 @@ export interface RebaseIntent {
   targetBranchRef: string | null;
 }
 
+export type TargetBase =
+  | { kind: 'sha'; sha: string }
+  | { kind: 'ref'; ref: string }
+  | { kind: 'completed-step-head'; stepId: string };
+
+export type QueuedStep =
+  | {
+      kind: 'rebase-branch';
+      id: string;
+      branchRef: string;
+      upstreamSha: string;
+      preRebaseHeadSha: string;
+      targetBase: TargetBase;
+    }
+  | {
+      kind: 'restore-head';
+      id: string;
+      branchRef: string | null;
+    };
+
+export interface OperationQueue {
+  schemaVersion: 1;
+  createdAtMs: number;
+  repoRoot: string;
+  originalBranchRef: string | null;
+  steps: QueuedStep[];
+  cursor: number;
+  completedHeads: Record<string, string>;
+  label: string;
+}
+
+export interface ActiveRebaseState {
+  gitInProgress: boolean;
+  queued: boolean;
+  pendingStepCount: number;
+  currentStep: { branchRef: string; label: string } | null;
+  headBranchRef: string | null;
+}
+
 export interface StackState {
   branches: StackBranch[];
   trunk: string | null;
@@ -51,6 +90,7 @@ export interface StackState {
   repoRoot: string | null;
   error: string | null;
   pendingRebase: RebaseIntent | null;
+  activeRebase: ActiveRebaseState | null;
 }
 
 export type HostToWebviewMessage = {
@@ -64,6 +104,8 @@ export type WebviewToHostMessage =
   | { type: 'submitRebaseIntent'; intent: RebaseIntent }
   | { type: 'confirmRebaseIntent' }
   | { type: 'cancelRebaseIntent' }
+  | { type: 'continueRebase' }
+  | { type: 'abortRebase' }
   | { type: 'checkoutBranch'; branchRef: string }
   | { type: 'pickAndCheckoutBranch'; branchRefs: string[] }
   | { type: 'forcePushBranch'; branchRef: string }

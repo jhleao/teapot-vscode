@@ -84,6 +84,7 @@ describe('dragAndDrop helpers', () => {
       repoRoot: '/repo',
       error: null,
       pendingRebase: null,
+    activeRebase: null,
     };
 
     const candidates = [

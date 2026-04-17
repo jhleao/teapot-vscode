@@ -117,6 +117,7 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
       repoRoot: '/repo',
       error: null,
       pendingRebase: null,
+    activeRebase: null,
     };
 
     const rows = layoutRows(state);
@@ -224,6 +225,7 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
       repoRoot: '/repo',
       error: null,
       pendingRebase: null,
+    activeRebase: null,
     };
 
     const rows = layoutRows(state);

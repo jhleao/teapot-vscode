@@ -390,6 +390,25 @@ body {
   flex-shrink: 0;
 }
 
+.active-rebase {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  margin-bottom: 4px;
+  background: var(--vscode-inputValidation-warningBackground, rgba(255, 200, 0, 0.1));
+  border: 1px solid var(--vscode-inputValidation-warningBorder, rgba(255, 200, 0, 0.5));
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.active-rebase-status {
+  color: var(--vscode-foreground);
+  flex: 1;
+  min-width: 0;
+}
+
 .rebase-summary {
   color: var(--vscode-descriptionForeground);
   font-size: 11px;

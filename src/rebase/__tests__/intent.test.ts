@@ -146,5 +146,6 @@ function createState(): StackState {
     repoRoot: '/repo',
     error: null,
     pendingRebase: null,
+    activeRebase: null,
   };
 }

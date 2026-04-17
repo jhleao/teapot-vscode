@@ -29,7 +29,11 @@ interface DragSession {
   autoScrollFrame: number | null;
 }
 
-type RebaseAction = 'confirm-rebase' | 'cancel-rebase';
+type RebaseAction =
+  | 'confirm-rebase'
+  | 'cancel-rebase'
+  | 'continue-rebase'
+  | 'abort-rebase';
 type ForcePushAction = 'force-push-branch';
 type CreateBranchAction = 'create-branch-at-commit';
 
@@ -95,6 +99,7 @@ export class StackInteractionController {
       event.button !== 0 ||
       !this.renderedState ||
       this.renderedState.pendingRebase ||
+      this.renderedState.activeRebase ||
       this.awaitingHostSync
     ) {
       return;
@@ -409,6 +414,18 @@ export class StackInteractionController {
         this.render();
         this.postMessage({ type: 'cancelRebaseIntent' });
         return;
+      case 'continue-rebase':
+        this.pendingAction = 'continue';
+        this.awaitingHostSync = true;
+        this.render();
+        this.postMessage({ type: 'continueRebase' });
+        return;
+      case 'abort-rebase':
+        this.pendingAction = 'abort';
+        this.awaitingHostSync = true;
+        this.render();
+        this.postMessage({ type: 'abortRebase' });
+        return;
     }
   }
 
@@ -418,7 +435,12 @@ export class StackInteractionController {
 }
 
 function isRebaseAction(action: string | undefined): action is RebaseAction {
-  return action === 'confirm-rebase' || action === 'cancel-rebase';
+  return (
+    action === 'confirm-rebase' ||
+    action === 'cancel-rebase' ||
+    action === 'continue-rebase' ||
+    action === 'abort-rebase'
+  );
 }
 
 function isForcePushAction(action: string | undefined): action is ForcePushAction {
@@ -450,6 +472,7 @@ function areStackStatesVisuallyEqual(left: StackState, right: StackState): boole
     left.current !== right.current ||
     left.trunk !== right.trunk ||
     !areRebaseIntentsEqual(left.pendingRebase, right.pendingRebase) ||
+    !areActiveRebasesEqual(left.activeRebase, right.activeRebase) ||
     left.branches.length !== right.branches.length
   ) {
     return false;
@@ -476,6 +499,23 @@ function areRebaseIntentsEqual(
     left.targetBaseSha === right.targetBaseSha &&
     left.targetBranchRef === right.targetBranchRef &&
     areIntentNodesEqual(left.root, right.root)
+  );
+}
+
+function areActiveRebasesEqual(
+  left: StackState['activeRebase'],
+  right: StackState['activeRebase']
+): boolean {
+  if (!left || !right) {
+    return left === right;
+  }
+  return (
+    left.gitInProgress === right.gitInProgress &&
+    left.queued === right.queued &&
+    left.pendingStepCount === right.pendingStepCount &&
+    left.headBranchRef === right.headBranchRef &&
+    left.currentStep?.branchRef === right.currentStep?.branchRef &&
+    left.currentStep?.label === right.currentStep?.label
   );
 }
 

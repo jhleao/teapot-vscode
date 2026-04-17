@@ -1,5 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { stat, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { Commit } from '../protocol';
 
 const exec = promisify(execFile);
@@ -272,13 +274,73 @@ export class GitClient {
     ]);
   }
 
-  private run(args: string[]): Promise<string> {
-    return runGit(this.repoRoot, args);
+  async rebaseContinue(): Promise<void> {
+    await this.run(['rebase', '--continue'], {
+      env: {
+        GIT_EDITOR: 'true',
+        GIT_SEQUENCE_EDITOR: 'true',
+      },
+    });
+  }
+
+  async rebaseAbort(): Promise<void> {
+    try {
+      await this.run(['rebase', '--abort']);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/no rebase in progress|No such file or directory/i.test(message)) {
+        return;
+      }
+      throw error;
+    }
+  }
+
+  async hasActiveRebase(): Promise<'merge' | 'apply' | null> {
+    const gitDir = join(this.repoRoot, '.git');
+    if (await pathExists(join(gitDir, 'rebase-merge'))) {
+      return 'merge';
+    }
+    if (await pathExists(join(gitDir, 'rebase-apply'))) {
+      return 'apply';
+    }
+    return null;
+  }
+
+  async readRebaseMergeHeadName(): Promise<string | null> {
+    const path = join(this.repoRoot, '.git', 'rebase-merge', 'head-name');
+    try {
+      const contents = await readFile(path, 'utf8');
+      return contents.trim().replace(/^refs\/heads\//, '') || null;
+    } catch {
+      return null;
+    }
+  }
+
+  private run(args: string[], options: { env?: NodeJS.ProcessEnv } = {}): Promise<string> {
+    return runGit(this.repoRoot, args, options);
   }
 }
 
-async function runGit(cwd: string, args: string[]): Promise<string> {
-  const { stdout } = await exec('git', args, { cwd, maxBuffer: GIT_EXEC_BUFFER_BYTES });
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function runGit(
+  cwd: string,
+  args: string[],
+  options: { env?: NodeJS.ProcessEnv } = {}
+): Promise<string> {
+  const env = options.env ? { ...process.env, ...options.env } : undefined;
+  const { stdout } = await exec('git', args, {
+    cwd,
+    maxBuffer: GIT_EXEC_BUFFER_BYTES,
+    env,
+  });
   return stdout;
 }
 

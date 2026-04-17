@@ -15,7 +15,14 @@ export class GitRefsWatcher implements vscode.Disposable {
     private readonly onChange: () => void,
     private readonly options: GitRefsWatcherOptions = {}
   ) {
-    const patterns = ['.git/refs/heads/**', '.git/{HEAD,packed-refs}', '.git/worktrees/**'];
+    const patterns = [
+      '.git/refs/heads/**',
+      '.git/{HEAD,packed-refs}',
+      '.git/worktrees/**',
+      '.git/rebase-merge/**',
+      '.git/rebase-apply/**',
+      '.git/teapot/operation-queue.json',
+    ];
 
     for (const pattern of patterns) {
       const watcher = vscode.workspace.createFileSystemWatcher(

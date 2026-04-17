@@ -1,8 +1,19 @@
-import type { PullRequestInfo, RebaseIntent, StackState } from '../../protocol';
+import type {
+  ActiveRebaseState,
+  PullRequestInfo,
+  RebaseIntent,
+  StackState,
+} from '../../protocol';
 import { layoutRows, type RowModel } from '../graph/layout';
 import { renderRowGraph } from '../graph/svg';
 
-export type PendingActionState = 'sync' | 'confirm' | 'cancel' | null;
+export type PendingActionState =
+  | 'sync'
+  | 'confirm'
+  | 'cancel'
+  | 'continue'
+  | 'abort'
+  | null;
 
 export interface RenderStackViewOptions {
   pendingAction: PendingActionState;
@@ -39,11 +50,71 @@ export function renderStackView(
   const fragment = document.createDocumentFragment();
   const pendingRebase = state.pendingRebase;
 
+  if (state.activeRebase) {
+    fragment.append(createActiveRebaseSection(state.activeRebase, options.pendingAction));
+  }
+
   for (const row of rows) {
     fragment.append(renderRow(row, pendingRebase, canCreatePullRequestByBranch, options));
   }
 
   root.replaceChildren(fragment);
+}
+
+function createActiveRebaseSection(
+  activeRebase: ActiveRebaseState,
+  pendingAction: PendingActionState
+): HTMLElement {
+  const section = document.createElement('div');
+  section.className = 'active-rebase';
+
+  const status = document.createElement('div');
+  status.className = 'active-rebase-status';
+  status.textContent = buildActiveRebaseStatusText(activeRebase);
+  section.append(status);
+
+  const actions = document.createElement('div');
+  actions.className = 'rebase-actions';
+
+  const isInFlight = pendingAction === 'continue' || pendingAction === 'abort';
+  const abortButton = createActionButton({
+    label: pendingAction === 'abort' ? 'Aborting...' : 'Abort',
+    action: 'abort-rebase',
+    disabled: isInFlight,
+  });
+  const continueButton = createActionButton({
+    label: pendingAction === 'continue' ? 'Continuing...' : 'Continue',
+    action: 'continue-rebase',
+    primary: true,
+    disabled: isInFlight || !activeRebase.gitInProgress,
+  });
+
+  actions.append(abortButton, continueButton);
+  section.append(actions);
+  return section;
+}
+
+function buildActiveRebaseStatusText(activeRebase: ActiveRebaseState): string {
+  const branchLabel =
+    activeRebase.currentStep?.branchRef ?? activeRebase.headBranchRef ?? null;
+
+  if (!activeRebase.gitInProgress) {
+    return 'Resuming rebase…';
+  }
+
+  const base = branchLabel
+    ? `Rebase paused — conflict in ${branchLabel}`
+    : 'Rebase paused — conflict';
+
+  if (activeRebase.pendingStepCount > 0) {
+    const suffix =
+      activeRebase.pendingStepCount === 1
+        ? '1 more after this'
+        : `${activeRebase.pendingStepCount} more after this`;
+    return `${base} (${suffix})`;
+  }
+
+  return base;
 }
 
 function renderRow(
