@@ -73,6 +73,187 @@ describe('layoutRows', () => {
     expect(rows[3]).toMatchObject({ kind: 'branch-header', branchName: 'feature', parentLane: 0 });
   });
 
+  it('drops shared branchless ancestor commits from non-primary siblings so the branchless commit renders once', () => {
+    // Two sibling branches both own [tip, shared-test1] where test1 is a
+    // branchless ancestor. In the original Teapot visual, test1 shows up
+    // exactly once on the primary's spine; the non-primary peels off at test1.
+    const state: StackState = {
+      branches: [
+        {
+          ref: 'main',
+          headSha: 'm1',
+          baseSha: 'm1',
+          parentRef: null,
+          childRefs: ['branch2', 'lobster'],
+          commits: [{ sha: 'm1', message: 'main', author: 'dev', timeMs: 1, parentSha: '' }],
+          isTrunk: true,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'branch2',
+          headSha: 'test2',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: [],
+          commits: [
+            { sha: 'test2', message: 'chore: test2', author: 'dev', timeMs: 36, parentSha: 'test1' },
+            { sha: 'test1', message: 'chore: test1', author: 'dev', timeMs: 37, parentSha: 'm1' },
+          ],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'lobster',
+          headSha: 'test5',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: [],
+          commits: [
+            { sha: 'test5', message: 'chore: test5', author: 'dev', timeMs: 33, parentSha: 'test1' },
+            { sha: 'test1', message: 'chore: test1', author: 'dev', timeMs: 37, parentSha: 'm1' },
+          ],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+      ],
+      trunk: 'main',
+      current: 'main',
+      repoRoot: '/repo',
+      error: null,
+      pendingRebase: null,
+    };
+
+    const rows = layoutRows(state);
+    const test1Rows = rows.filter(
+      (row) => row.kind === 'commit' && row.commit?.sha === 'test1'
+    );
+
+    // The branchless test1 commit should render exactly once.
+    expect(test1Rows).toHaveLength(1);
+
+    // It should render on the primary sibling's spine at lane 1, not under
+    // the spin-off.
+    expect(test1Rows[0]).toMatchObject({ lane: 1 });
+
+    // Both siblings' tip commits should appear; the spin-off at lane 2.
+    const test2Row = rows.find(
+      (row) => row.kind === 'commit' && row.commit?.sha === 'test2'
+    );
+    const test5Row = rows.find(
+      (row) => row.kind === 'commit' && row.commit?.sha === 'test5'
+    );
+    expect(test2Row).toBeDefined();
+    expect(test5Row).toBeDefined();
+    // Exactly one of them is the spin-off (lane 2); the other stays on the
+    // primary's spine (lane 1).
+    const spinoffLanes = [test2Row!.lane, test5Row!.lane].sort();
+    expect(spinoffLanes).toEqual([1, 2]);
+  });
+
+  it('keeps independent siblings as lane-1 peers when they share no ancestor commits', () => {
+    const state: StackState = {
+      branches: [
+        {
+          ref: 'main',
+          headSha: 'm1',
+          baseSha: 'm1',
+          parentRef: null,
+          childRefs: ['branch1', 'branch2', 'lobster'],
+          commits: [{ sha: 'm1', message: 'main', author: 'dev', timeMs: 1, parentSha: '' }],
+          isTrunk: true,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'branch1',
+          headSha: 'b1',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: [],
+          commits: [{ sha: 'b1', message: 'test1', author: 'dev', timeMs: 2, parentSha: 'm1' }],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'branch2',
+          headSha: 'b2',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: [],
+          commits: [{ sha: 'b2', message: 'test2', author: 'dev', timeMs: 5, parentSha: 'm1' }],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'lobster',
+          headSha: 'l1',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: [],
+          commits: [{ sha: 'l1', message: 'test5', author: 'dev', timeMs: 10, parentSha: 'm1' }],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+      ],
+      trunk: 'main',
+      current: 'main',
+      repoRoot: '/repo',
+      error: null,
+      pendingRebase: null,
+    };
+
+    const rows = layoutRows(state);
+
+    // No siblings share ancestor commits, so none reattach as spin-offs.
+    // All three render as independent peers off trunk at lane 1, each with
+    // its own branch-header curve back to lane 0.
+    const tipByBranch = Object.fromEntries(
+      rows
+        .filter((row) => row.kind === 'commit' && row.isBranchTip)
+        .map((row) => [row.branchName, row])
+    );
+
+    expect(tipByBranch['branch1']?.lane).toBe(1);
+    expect(tipByBranch['branch2']?.lane).toBe(1);
+    expect(tipByBranch['lobster']?.lane).toBe(1);
+
+    const branchHeaders = rows.filter((row) => row.kind === 'branch-header');
+    const headerByBranch = Object.fromEntries(
+      branchHeaders.map((row) => [row.branchName, row])
+    );
+
+    expect(headerByBranch['branch1']).toMatchObject({ lane: 1, parentLane: 0 });
+    expect(headerByBranch['branch2']).toMatchObject({ lane: 1, parentLane: 0 });
+    expect(headerByBranch['lobster']).toMatchObject({ lane: 1, parentLane: 0 });
+  });
+
   it('does not prioritize the current branch over newer sibling stacks', () => {
     const state: StackState = {
       branches: [

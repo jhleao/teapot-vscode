@@ -5,9 +5,13 @@ const GRAPH_COLOR = 'var(--vscode-descriptionForeground, #858585)';
 const TRUNK_COLOR = 'var(--vscode-descriptionForeground, #858585)';
 const CURRENT_COLOR = 'var(--vscode-focusBorder, var(--vscode-button-background, #007fd4))';
 const EMPTY_LANES: RowLane[] = [];
-const TRUNK_PASS_THROUGH: RowLane[] = [{ lane: 0, color: TRUNK_COLOR }];
 
 type ChildRefsByBaseSha = Map<string, string[]>;
+
+interface SpinoffAttachment {
+  primaryRef: string;
+  attachSha: string;
+}
 
 interface LayoutContext {
   branchesByRef: Map<string, StackBranch>;
@@ -16,6 +20,17 @@ interface LayoutContext {
   additionalRefsByPrimary: Map<string, string[]>;
   collapsedBranchRefs: Set<string>;
   primaryByCollapsed: Map<string, string>;
+  // Sibling branches that share parentRef + baseSha are visually reattached
+  // as spin-offs of one chosen "primary" sibling. Each non-primary gets its
+  // own lane (primary lane + 1) and its own branch-header curve back to the
+  // primary's lane — mirroring how original Teapot nests co-located spinoffs.
+  reattachedSpinoffs: Map<string, SpinoffAttachment>;
+  // Trailing ancestor commits that siblings share with the primary
+  // (branchless commits between the divergence point and the shared base).
+  // These get filtered out of the non-primary branches so the branchless
+  // commit renders only once, under the primary.
+  droppedCommitShasByBranch: Map<string, Set<string>>;
+  laneByRef: Map<string, number>;
 }
 
 export interface RowLane {
@@ -59,8 +74,17 @@ export function layoutRows(state: StackState): RowModel[] {
     childRefsByParentAndBase,
     additionalRefsByPrimary,
     collapsedBranchRefs,
+    reattachedSpinoffs,
+    droppedCommitShasByBranch,
+    laneByRef,
   } = createLayoutContext(state.branches);
-  const laneOf = (branchRef: string): number => (branchesByRef.get(branchRef)?.isTrunk ? 0 : 1);
+  const laneOf = (branchRef: string): number => {
+    const cached = laneByRef.get(branchRef);
+    if (cached !== undefined) {
+      return cached;
+    }
+    return branchesByRef.get(branchRef)?.isTrunk ? 0 : 1;
+  };
   const colorOf = (branchRef: string): string => {
     const branch = branchesByRef.get(branchRef);
     if (branch?.isCurrent) {
@@ -78,7 +102,7 @@ export function layoutRows(state: StackState): RowModel[] {
   const actionCommitSha = state.pendingRebase?.root.headSha ?? null;
   const rootRefs = getRootRefs(state.branches, branchesByRef, commitTimesBySha);
 
-  const emitBranch = (branchRef: string): void => {
+  const emitBranch = (branchRef: string, ancestorLanes: readonly RowLane[]): void => {
     if (collapsedBranchRefs.has(branchRef)) {
       return;
     }
@@ -88,11 +112,21 @@ export function layoutRows(state: StackState): RowModel[] {
     }
 
     const lane = laneOf(branchRef);
-    const parentLane = branch.parentRef ? laneOf(branch.parentRef) : undefined;
+    const laneColor = colorOf(branch.ref);
+    const spinoffAttachment = reattachedSpinoffs.get(branch.ref);
+    const effectiveParentRef = spinoffAttachment?.primaryRef ?? branch.parentRef;
+    const parentLane = effectiveParentRef ? laneOf(effectiveParentRef) : undefined;
     const willRenderBranchHeader = parentLane !== undefined && parentLane !== lane;
-    const passThrough = branch.isTrunk ? EMPTY_LANES : TRUNK_PASS_THROUGH;
+    // passThrough shows ancestor-branch spines that remain continuous across
+    // this branch's rows — e.g. lane 0 (trunk) passes through every non-trunk
+    // row, and when a spin-off nests inside a primary, the primary's lane
+    // passes through the spin-off's rows too. Children we recurse into get
+    // this branch's lane added so their rows keep our spine drawn.
+    const passThrough = ancestorLanes.length === 0 ? EMPTY_LANES : ancestorLanes;
+    const childAncestorLanes: RowLane[] = [...ancestorLanes, { lane, color: laneColor }];
     const childRefsAtBaseSha = childRefsByParentAndBase.get(branch.ref) ?? new Map();
-    const renderedCommits = getRenderedCommits(branch, childRefsAtBaseSha);
+    const droppedShas = droppedCommitShasByBranch.get(branch.ref);
+    const renderedCommits = getRenderedCommits(branch, childRefsAtBaseSha, droppedShas);
     const hasChildrenAbove =
       renderedCommits[0] !== undefined &&
       (childRefsAtBaseSha.get(renderedCommits[0].sha)?.length ?? 0) > 0;
@@ -102,7 +136,7 @@ export function layoutRows(state: StackState): RowModel[] {
         kind: 'commit',
         branchName: branch.ref,
         lane,
-        laneColor: colorOf(branch.ref),
+        laneColor,
         passThrough,
         isCurrent: branch.isCurrent,
         isBranchTip: true,
@@ -124,7 +158,7 @@ export function layoutRows(state: StackState): RowModel[] {
       const childRefs = childRefsAtBaseSha.get(commit.sha) ?? [];
 
       for (const childRef of childRefs) {
-        emitBranch(childRef);
+        emitBranch(childRef, childAncestorLanes);
       }
 
       const isBranchTip = index === 0;
@@ -134,7 +168,7 @@ export function layoutRows(state: StackState): RowModel[] {
         kind: 'commit',
         branchName: branch.ref,
         lane,
-        laneColor: colorOf(branch.ref),
+        laneColor,
         passThrough,
         commit: {
           sha: commit.sha,
@@ -164,7 +198,7 @@ export function layoutRows(state: StackState): RowModel[] {
         kind: 'branch-header',
         branchName: branch.ref,
         lane,
-        laneColor: colorOf(branch.ref),
+        laneColor,
         passThrough,
         parentLane,
         isCurrent: false,
@@ -185,7 +219,7 @@ export function layoutRows(state: StackState): RowModel[] {
   };
 
   for (const rootRef of rootRefs) {
-    emitBranch(rootRef);
+    emitBranch(rootRef, EMPTY_LANES);
   }
 
   return rows;
@@ -206,12 +240,20 @@ function createLayoutContext(branches: StackBranch[]): LayoutContext {
   const commitTimesBySha = commitTimesByShaIndex(branches);
   const { additionalRefsByPrimary, collapsedBranchRefs, primaryByCollapsed } =
     planSameShaCollapse(branches);
+  const { reattachedSpinoffs, droppedCommitShasByBranch } = planSiblingSpinoffs(
+    branches,
+    branchesByRef,
+    commitTimesBySha,
+    collapsedBranchRefs
+  );
   const childRefsByParentAndBase = childRefsByParentAndBaseIndex(
     branches,
     branchesByRef,
     commitTimesBySha,
-    primaryByCollapsed
+    primaryByCollapsed,
+    reattachedSpinoffs
   );
+  const laneByRef = computeLaneByRef(branches, branchesByRef, reattachedSpinoffs);
 
   return {
     branchesByRef,
@@ -220,7 +262,147 @@ function createLayoutContext(branches: StackBranch[]): LayoutContext {
     additionalRefsByPrimary,
     collapsedBranchRefs,
     primaryByCollapsed,
+    reattachedSpinoffs,
+    droppedCommitShasByBranch,
+    laneByRef,
   };
+}
+
+// When two or more non-trunk sibling branches share parentRef + baseSha, they
+// would otherwise render as a vertical stack of dots in the same lane —
+// indistinguishable from a single branch. Pick one as the "primary" (last in
+// sortChildRefs order, so it renders farthest from the tip / closest to the
+// parent) and re-attach the rest as spin-offs of the primary.
+//
+// When the siblings share trailing (ancestor) commits — e.g. two feature
+// branches both sitting above a branchless commit test1 — the non-primary
+// siblings drop those shared commits from their rendered list and attach at
+// the divergence commit (test1). That way test1 renders only once, under the
+// primary, and the spin-off curves point at it. When there are no shared
+// commits, non-primaries attach at the primary's tip.
+//
+// Lane assignment (computeLaneByRef) then places each non-primary at
+// primaryLane + 1 so every sibling gets its own curve back to the primary.
+// Git topology on StackBranch itself is left untouched — rebase/drag planning
+// still sees the real graph.
+function planSiblingSpinoffs(
+  branches: StackBranch[],
+  branchesByRef: Map<string, StackBranch>,
+  commitTimesBySha: ReadonlyMap<string, number>,
+  collapsedBranchRefs: ReadonlySet<string>
+): {
+  reattachedSpinoffs: Map<string, SpinoffAttachment>;
+  droppedCommitShasByBranch: Map<string, Set<string>>;
+} {
+  const reattachedSpinoffs = new Map<string, SpinoffAttachment>();
+  const droppedCommitShasByBranch = new Map<string, Set<string>>();
+
+  const groupsByParentBase = new Map<string, StackBranch[]>();
+  for (const branch of branches) {
+    if (branch.isTrunk || branch.isRemote) continue;
+    if (collapsedBranchRefs.has(branch.ref)) continue;
+    if (!branch.parentRef) continue;
+    const key = `${branch.parentRef}\x00${branch.baseSha}`;
+    const list = groupsByParentBase.get(key) ?? [];
+    list.push(branch);
+    groupsByParentBase.set(key, list);
+  }
+
+  for (const group of groupsByParentBase.values()) {
+    if (group.length < 2) continue;
+
+    const sortedRefs = sortChildRefs(
+      group.map((b) => b.ref),
+      branchesByRef,
+      commitTimesBySha
+    );
+    const primaryRef = sortedRefs[sortedRefs.length - 1];
+    const primary = branchesByRef.get(primaryRef);
+    if (!primary) continue;
+
+    // Per-sibling: count trailing commits that this non-primary shares with
+    // the primary, walking both from the tail (oldest-first). A sibling only
+    // becomes a spin-off if it shares at least one ancestor commit with the
+    // primary — otherwise it stays as an independent peer under the real
+    // parent (e.g. `laks` and `ioqw` alongside `branch2` under `main`).
+    for (const branch of group) {
+      if (branch.ref === primaryRef) continue;
+
+      const maxShared = Math.min(branch.commits.length, primary.commits.length);
+      let sharedLength = 0;
+      for (let i = 0; i < maxShared; i += 1) {
+        const primarySha = primary.commits[primary.commits.length - 1 - i]?.sha;
+        const siblingSha = branch.commits[branch.commits.length - 1 - i]?.sha;
+        if (!primarySha || !siblingSha || primarySha !== siblingSha) break;
+        sharedLength += 1;
+      }
+
+      if (sharedLength === 0) continue;
+
+      const sharedShaSet = new Set<string>();
+      for (let i = 0; i < sharedLength; i += 1) {
+        sharedShaSet.add(primary.commits[primary.commits.length - 1 - i].sha);
+      }
+      // Topmost shared commit (closest to tips) = the divergence point.
+      const attachSha = primary.commits[primary.commits.length - sharedLength].sha;
+
+      reattachedSpinoffs.set(branch.ref, { primaryRef, attachSha });
+      droppedCommitShasByBranch.set(branch.ref, sharedShaSet);
+    }
+  }
+
+  return { reattachedSpinoffs, droppedCommitShasByBranch };
+}
+
+// Trunk → 0. Natural non-trunk branches → 1. Reattached spin-off siblings →
+// primary's lane + 1 (resolved recursively for chains of reattachments).
+function computeLaneByRef(
+  branches: StackBranch[],
+  branchesByRef: Map<string, StackBranch>,
+  reattachedSpinoffs: ReadonlyMap<string, SpinoffAttachment>
+): Map<string, number> {
+  const laneByRef = new Map<string, number>();
+  const visiting = new Set<string>();
+
+  const resolve = (ref: string): number => {
+    const cached = laneByRef.get(ref);
+    if (cached !== undefined) return cached;
+    // Cycle guard — shouldn't happen with well-formed reattachments.
+    if (visiting.has(ref)) return 1;
+    visiting.add(ref);
+
+    const branch = branchesByRef.get(ref);
+    let lane: number;
+    if (!branch) {
+      lane = 1;
+    } else if (branch.isTrunk) {
+      lane = 0;
+    } else {
+      const attachment = reattachedSpinoffs.get(ref);
+      if (attachment) {
+        lane = resolve(attachment.primaryRef) + 1;
+      } else if (branch.parentRef) {
+        // Non-reattached, non-trunk descendants stay on the same spine as
+        // their parent. Without this, a child of a spin-off (e.g. jhleao
+        // under feat/overview-…) would drop back to lane 1 and detach from
+        // its parent's column.
+        const parentLane = resolve(branch.parentRef);
+        lane = parentLane === 0 ? 1 : parentLane;
+      } else {
+        lane = 1;
+      }
+    }
+
+    visiting.delete(ref);
+    laneByRef.set(ref, lane);
+    return lane;
+  };
+
+  for (const branch of branches) {
+    resolve(branch.ref);
+  }
+
+  return laneByRef;
 }
 
 // When two or more local branches share a commit SHA — siblings at the same
@@ -302,7 +484,8 @@ function childRefsByParentAndBaseIndex(
   branches: StackBranch[],
   branchesByRef: Map<string, StackBranch>,
   commitTimesBySha: ReadonlyMap<string, number>,
-  primaryByCollapsed: ReadonlyMap<string, string>
+  primaryByCollapsed: ReadonlyMap<string, string>,
+  reattachedSpinoffs: ReadonlyMap<string, SpinoffAttachment>
 ): Map<string, ChildRefsByBaseSha> {
   const childRefsByParentAndBase = new Map<string, ChildRefsByBaseSha>();
 
@@ -311,16 +494,28 @@ function childRefsByParentAndBaseIndex(
       continue;
     }
 
-    // Re-route children of a collapsed branch onto its primary. The collapsed
-    // branch has no row of its own, so children attached to it would otherwise
-    // become unreachable during the emit walk.
-    const effectiveParentRef =
-      primaryByCollapsed.get(branch.parentRef) ?? branch.parentRef;
+    // Spin-offs reattach to a sibling primary at the primary's tip commit,
+    // rather than to their real git parent — that's what produces the
+    // cascading spin-off look when several branches share a parent+base.
+    const spinoffAttachment = reattachedSpinoffs.get(branch.ref);
+    let effectiveParentRef: string;
+    let effectiveBaseSha: string;
+    if (spinoffAttachment) {
+      effectiveParentRef = spinoffAttachment.primaryRef;
+      effectiveBaseSha = spinoffAttachment.attachSha;
+    } else {
+      // Re-route children of a collapsed branch onto its primary. The
+      // collapsed branch has no row of its own, so children attached to it
+      // would otherwise become unreachable during the emit walk.
+      effectiveParentRef =
+        primaryByCollapsed.get(branch.parentRef) ?? branch.parentRef;
+      effectiveBaseSha = branch.baseSha;
+    }
 
     const childRefsByBaseSha = childRefsByParentAndBase.get(effectiveParentRef) ?? new Map();
-    const childRefs = childRefsByBaseSha.get(branch.baseSha) ?? [];
+    const childRefs = childRefsByBaseSha.get(effectiveBaseSha) ?? [];
     childRefs.push(branch.ref);
-    childRefsByBaseSha.set(branch.baseSha, childRefs);
+    childRefsByBaseSha.set(effectiveBaseSha, childRefs);
     childRefsByParentAndBase.set(effectiveParentRef, childRefsByBaseSha);
   }
 
@@ -338,10 +533,16 @@ function childRefsByParentAndBaseIndex(
 
 function getRenderedCommits(
   branch: StackBranch,
-  childRefsAtBaseSha: ChildRefsByBaseSha
+  childRefsAtBaseSha: ChildRefsByBaseSha,
+  droppedShas: ReadonlySet<string> | undefined
 ): StackBranch['commits'] {
+  const filterDropped = (commits: StackBranch['commits']): StackBranch['commits'] =>
+    droppedShas && droppedShas.size > 0
+      ? commits.filter((commit) => !droppedShas.has(commit.sha))
+      : commits;
+
   if (!branch.isTrunk || branch.commits.length <= 1) {
-    return branch.commits;
+    return filterDropped(branch.commits);
   }
 
   // Mirror Teapot's decluttered trunk rendering: keep the tip and every
@@ -360,7 +561,7 @@ function getRenderedCommits(
     }
   }
 
-  return renderedCommits;
+  return filterDropped(renderedCommits);
 }
 
 function getRebaseStatus(
