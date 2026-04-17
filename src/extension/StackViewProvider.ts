@@ -209,8 +209,8 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       case 'checkoutBranch':
         await this.performCheckoutBranch(message.branchRef);
         return;
-      case 'pickAndCheckoutBranch':
-        await this.performPickAndCheckoutBranch(message.branchRefs);
+      case 'pickBranchAction':
+        await this.performPickBranchAction(message.branchRefs);
         return;
       case 'forcePushBranch':
         await this.performForcePushBranch(message.branchRef);
@@ -338,17 +338,31 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     await this.refresh();
   }
 
-  private async performPickAndCheckoutBranch(branchRefs: string[]): Promise<void> {
+  private async performPickBranchAction(branchRefs: string[]): Promise<void> {
     if (branchRefs.length === 0) {
       return;
     }
-    const picked = await vscode.window.showQuickPick(branchRefs, {
-      placeHolder: 'Check out branch',
+    const branch = await vscode.window.showQuickPick(branchRefs, {
+      placeHolder: 'Select a branch',
     });
-    if (!picked) {
+    if (!branch) {
       return;
     }
-    await this.performCheckoutBranch(picked);
+    const action = await vscode.window.showQuickPick(
+      [
+        { label: 'Checkout', value: 'checkout' as const },
+        { label: 'Delete', value: 'delete' as const },
+      ],
+      { placeHolder: `Action for ${branch}` }
+    );
+    if (!action) {
+      return;
+    }
+    if (action.value === 'checkout') {
+      await this.performCheckoutBranch(branch);
+    } else {
+      await this.performDeleteBranch(branch);
+    }
   }
 
   private async performBranchAndCommit(): Promise<void> {
@@ -357,8 +371,8 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       return;
     }
 
-    if (!(await git.hasAnyChanges())) {
-      void vscode.window.showInformationMessage('No changes to commit.');
+    if (!(await git.hasStagedChanges())) {
+      void vscode.window.showErrorMessage('No staged changes to commit. Stage changes first.');
       return;
     }
 
@@ -371,23 +385,9 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     }
 
     const existing = new Set((await git.listLocalBranches()).map((b) => b.name));
-    const branchName = await vscode.window.showInputBox({
-      title: 'Branch and Commit',
-      prompt: 'Name for the new branch',
-      validateInput: (value) => {
-        const trimmed = value.trim();
-        if (!trimmed) return 'Branch name cannot be empty';
-        if (/\s/.test(trimmed)) return 'Branch name cannot contain whitespace';
-        if (existing.has(trimmed)) return `A branch named "${trimmed}" already exists`;
-        return null;
-      },
-    });
+    const branchName = BranchNamingUtils.generate(existing);
 
-    if (!branchName) {
-      return;
-    }
-
-    await git.createAndCheckoutBranch(branchName.trim());
+    await git.createAndCheckoutBranch(branchName);
     await git.commitChanges(message);
     await this.clearScmInputValue(git.getRepoRoot());
 

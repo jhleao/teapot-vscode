@@ -107,7 +107,7 @@ export type WebviewToHostMessage =
   | { type: 'continueRebase' }
   | { type: 'abortRebase' }
   | { type: 'checkoutBranch'; branchRef: string }
-  | { type: 'pickAndCheckoutBranch'; branchRefs: string[] }
+  | { type: 'pickBranchAction'; branchRefs: string[] }
   | { type: 'forcePushBranch'; branchRef: string }
   | { type: 'createPullRequest'; branchRef: string }
   | { type: 'createBranchAtCommit'; commitSha: string };

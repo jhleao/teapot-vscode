@@ -135,7 +135,7 @@ export class StackInteractionController {
       if (branchRefs.length > 0) {
         event.preventDefault();
         event.stopPropagation();
-        this.postMessage({ type: 'pickAndCheckoutBranch', branchRefs });
+        this.postMessage({ type: 'pickBranchAction', branchRefs });
       }
       return;
     }
