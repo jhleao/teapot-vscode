@@ -15,6 +15,7 @@ interface LayoutContext {
   childRefsByParentAndBase: Map<string, ChildRefsByBaseSha>;
   additionalRefsByPrimary: Map<string, string[]>;
   collapsedBranchRefs: Set<string>;
+  primaryByCollapsed: Map<string, string>;
 }
 
 export interface RowLane {
@@ -199,12 +200,14 @@ function sortChildRefs(
 function createLayoutContext(branches: StackBranch[]): LayoutContext {
   const branchesByRef = branchesByRefIndex(branches);
   const commitTimesBySha = commitTimesByShaIndex(branches);
+  const { additionalRefsByPrimary, collapsedBranchRefs, primaryByCollapsed } =
+    planSameShaCollapse(branches);
   const childRefsByParentAndBase = childRefsByParentAndBaseIndex(
     branches,
     branchesByRef,
-    commitTimesBySha
+    commitTimesBySha,
+    primaryByCollapsed
   );
-  const { additionalRefsByPrimary, collapsedBranchRefs } = planSameShaCollapse(branches);
 
   return {
     branchesByRef,
@@ -212,6 +215,7 @@ function createLayoutContext(branches: StackBranch[]): LayoutContext {
     childRefsByParentAndBase,
     additionalRefsByPrimary,
     collapsedBranchRefs,
+    primaryByCollapsed,
   };
 }
 
@@ -223,6 +227,7 @@ function createLayoutContext(branches: StackBranch[]): LayoutContext {
 function planSameShaCollapse(branches: StackBranch[]): {
   additionalRefsByPrimary: Map<string, string[]>;
   collapsedBranchRefs: Set<string>;
+  primaryByCollapsed: Map<string, string>;
 } {
   const branchesByHeadSha = new Map<string, StackBranch[]>();
   for (const branch of branches) {
@@ -236,6 +241,7 @@ function planSameShaCollapse(branches: StackBranch[]): {
 
   const additionalRefsByPrimary = new Map<string, string[]>();
   const collapsedBranchRefs = new Set<string>();
+  const primaryByCollapsed = new Map<string, string>();
 
   for (const group of branchesByHeadSha.values()) {
     if (group.length < 2) {
@@ -263,10 +269,11 @@ function planSameShaCollapse(branches: StackBranch[]): {
     );
     for (const branch of rest) {
       collapsedBranchRefs.add(branch.ref);
+      primaryByCollapsed.set(branch.ref, primary.ref);
     }
   }
 
-  return { additionalRefsByPrimary, collapsedBranchRefs };
+  return { additionalRefsByPrimary, collapsedBranchRefs, primaryByCollapsed };
 }
 
 function branchesByRefIndex(branches: StackBranch[]): Map<string, StackBranch> {
@@ -290,7 +297,8 @@ function commitTimesByShaIndex(branches: StackBranch[]): Map<string, number> {
 function childRefsByParentAndBaseIndex(
   branches: StackBranch[],
   branchesByRef: Map<string, StackBranch>,
-  commitTimesBySha: ReadonlyMap<string, number>
+  commitTimesBySha: ReadonlyMap<string, number>,
+  primaryByCollapsed: ReadonlyMap<string, string>
 ): Map<string, ChildRefsByBaseSha> {
   const childRefsByParentAndBase = new Map<string, ChildRefsByBaseSha>();
 
@@ -299,11 +307,17 @@ function childRefsByParentAndBaseIndex(
       continue;
     }
 
-    const childRefsByBaseSha = childRefsByParentAndBase.get(branch.parentRef) ?? new Map();
+    // Re-route children of a collapsed branch onto its primary. The collapsed
+    // branch has no row of its own, so children attached to it would otherwise
+    // become unreachable during the emit walk.
+    const effectiveParentRef =
+      primaryByCollapsed.get(branch.parentRef) ?? branch.parentRef;
+
+    const childRefsByBaseSha = childRefsByParentAndBase.get(effectiveParentRef) ?? new Map();
     const childRefs = childRefsByBaseSha.get(branch.baseSha) ?? [];
     childRefs.push(branch.ref);
     childRefsByBaseSha.set(branch.baseSha, childRefs);
-    childRefsByParentAndBase.set(branch.parentRef, childRefsByBaseSha);
+    childRefsByParentAndBase.set(effectiveParentRef, childRefsByBaseSha);
   }
 
   for (const childRefsByBaseSha of childRefsByParentAndBase.values()) {

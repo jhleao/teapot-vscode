@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { PullRequestInfo, StackState } from '../../../protocol';
+import type { PullRequestInfo, RebaseIntent, StackState } from '../../../protocol';
 import { layoutRows } from '../layout';
+import { applyRebaseIntentToState } from '../../../rebase/project';
 
 describe('layoutRows', () => {
   it('renders the current branch subtree above its parent stack', () => {
@@ -750,5 +751,356 @@ describe('layoutRows', () => {
 
     expect(choreRow).toBeUndefined();
     expect(mainRow?.additionalBranchRefs).toEqual(['chore/cleanup']);
+  });
+
+  it('keeps the rebased branch visible after optimistically rebasing a single branch onto trunk head', () => {
+    const state: StackState = {
+      branches: [
+        {
+          ref: 'main',
+          headSha: 'm3',
+          baseSha: 'm3',
+          parentRef: null,
+          childRefs: ['feature'],
+          ownedShas: ['m3', 'm2', 'm1'],
+          commits: [
+            { sha: 'm3', message: 'main tip', author: 'dev', timeMs: 3, parentSha: 'm2' },
+            { sha: 'm2', message: 'main middle', author: 'dev', timeMs: 2, parentSha: 'm1' },
+            { sha: 'm1', message: 'main base', author: 'dev', timeMs: 1, parentSha: '' },
+          ],
+          isTrunk: true,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'feature',
+          headSha: 'f1',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: [],
+          ownedShas: ['f1'],
+          commits: [{ sha: 'f1', message: 'feature', author: 'dev', timeMs: 4, parentSha: 'm1' }],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: true,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+      ],
+      trunk: 'main',
+      current: 'feature',
+      repoRoot: '/repo',
+      error: null,
+      pendingRebase: null,
+    };
+
+    const intent: RebaseIntent = {
+      root: {
+        branchRef: 'feature',
+        headSha: 'f1',
+        baseSha: 'm1',
+        ownedShas: ['f1'],
+        children: [],
+      },
+      targetBaseSha: 'm3',
+      targetBranchRef: 'main',
+    };
+
+    const projected = applyRebaseIntentToState(state, intent);
+    const rows = layoutRows(projected);
+
+    const featureTip = rows.find(
+      (row) => row.kind === 'commit' && row.branchName === 'feature' && row.isBranchTip
+    );
+    expect(featureTip).toBeDefined();
+    expect(featureTip?.commit?.sha).toBe('f1');
+  });
+
+  it('keeps the dragged branch visible after optimistically rebasing onto trunk head even when trunk shares its SHA with a collapsed sibling', () => {
+    const state: StackState = {
+      branches: [
+        {
+          ref: 'main',
+          headSha: 'm1',
+          baseSha: 'm1',
+          parentRef: null,
+          childRefs: ['chore/alias', 'feature'],
+          ownedShas: ['m1'],
+          commits: [{ sha: 'm1', message: 'main', author: 'dev', timeMs: 1, parentSha: '' }],
+          isTrunk: true,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        // Zero-commit sibling branch sitting on trunk's head; gets collapsed
+        // into main's row by planSameShaCollapse.
+        {
+          ref: 'chore/alias',
+          headSha: 'm1',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: [],
+          ownedShas: [],
+          commits: [],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'feature',
+          headSha: 'f1',
+          baseSha: 'f-base',
+          parentRef: 'other',
+          childRefs: [],
+          ownedShas: ['f1'],
+          commits: [{ sha: 'f1', message: 'feature', author: 'dev', timeMs: 2, parentSha: '' }],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: true,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'other',
+          headSha: 'f-base',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: ['feature'],
+          ownedShas: ['f-base'],
+          commits: [{ sha: 'f-base', message: 'other', author: 'dev', timeMs: 2, parentSha: 'm1' }],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+      ],
+      trunk: 'main',
+      current: 'feature',
+      repoRoot: '/repo',
+      error: null,
+      pendingRebase: null,
+    };
+
+    const intent: RebaseIntent = {
+      root: {
+        branchRef: 'feature',
+        headSha: 'f1',
+        baseSha: 'f-base',
+        ownedShas: ['f1'],
+        children: [],
+      },
+      targetBaseSha: 'm1',
+      targetBranchRef: 'main',
+    };
+
+    const projected = applyRebaseIntentToState(state, intent);
+    const rows = layoutRows(projected);
+
+    const featureTip = rows.find(
+      (row) => row.kind === 'commit' && row.branchName === 'feature' && row.isBranchTip
+    );
+    expect(featureTip).toBeDefined();
+    expect(featureTip?.commit?.sha).toBe('f1');
+  });
+
+  it('still emits descendants when a branch gets optimistically reparented under a collapsed sibling of trunk', () => {
+    const state: StackState = {
+      branches: [
+        {
+          ref: 'main',
+          headSha: 'm1',
+          baseSha: 'm1',
+          parentRef: null,
+          childRefs: ['chore/alias', 'feature'],
+          ownedShas: ['m1'],
+          commits: [{ sha: 'm1', message: 'main', author: 'dev', timeMs: 1, parentSha: '' }],
+          isTrunk: true,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'chore/alias',
+          headSha: 'm1',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: [],
+          ownedShas: [],
+          commits: [],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'feature',
+          headSha: 'f1',
+          baseSha: 'f-base',
+          parentRef: 'other',
+          childRefs: [],
+          ownedShas: ['f1'],
+          commits: [{ sha: 'f1', message: 'feature', author: 'dev', timeMs: 2, parentSha: '' }],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: true,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'other',
+          headSha: 'f-base',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: ['feature'],
+          ownedShas: ['f-base'],
+          commits: [{ sha: 'f-base', message: 'other', author: 'dev', timeMs: 2, parentSha: 'm1' }],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+      ],
+      trunk: 'main',
+      current: 'feature',
+      repoRoot: '/repo',
+      error: null,
+      pendingRebase: null,
+    };
+
+    // Simulate the buggy pre-fix intent that targets the collapsed sibling
+    // instead of trunk. Even with this malformed intent, the layout should
+    // still render the dragged branch by routing it through the primary.
+    const intent: RebaseIntent = {
+      root: {
+        branchRef: 'feature',
+        headSha: 'f1',
+        baseSha: 'f-base',
+        ownedShas: ['f1'],
+        children: [],
+      },
+      targetBaseSha: 'm1',
+      targetBranchRef: 'chore/alias',
+    };
+
+    const projected = applyRebaseIntentToState(state, intent);
+    const rows = layoutRows(projected);
+
+    const featureTip = rows.find(
+      (row) => row.kind === 'commit' && row.branchName === 'feature' && row.isBranchTip
+    );
+    expect(featureTip).toBeDefined();
+  });
+
+  it('keeps a stacked branch subtree visible after optimistically rebasing onto trunk head', () => {
+    const state: StackState = {
+      branches: [
+        {
+          ref: 'main',
+          headSha: 'm3',
+          baseSha: 'm3',
+          parentRef: null,
+          childRefs: ['feature'],
+          ownedShas: ['m3', 'm2', 'm1'],
+          commits: [
+            { sha: 'm3', message: 'main tip', author: 'dev', timeMs: 3, parentSha: 'm2' },
+            { sha: 'm2', message: 'main middle', author: 'dev', timeMs: 2, parentSha: 'm1' },
+            { sha: 'm1', message: 'main base', author: 'dev', timeMs: 1, parentSha: '' },
+          ],
+          isTrunk: true,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'feature',
+          headSha: 'f1',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: ['fixup'],
+          ownedShas: ['f1'],
+          commits: [{ sha: 'f1', message: 'feature', author: 'dev', timeMs: 4, parentSha: 'm1' }],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'fixup',
+          headSha: 'x1',
+          baseSha: 'f1',
+          parentRef: 'feature',
+          childRefs: [],
+          ownedShas: ['x1'],
+          commits: [{ sha: 'x1', message: 'fixup', author: 'dev', timeMs: 5, parentSha: 'f1' }],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: true,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+      ],
+      trunk: 'main',
+      current: 'fixup',
+      repoRoot: '/repo',
+      error: null,
+      pendingRebase: null,
+    };
+
+    const intent: RebaseIntent = {
+      root: {
+        branchRef: 'feature',
+        headSha: 'f1',
+        baseSha: 'm1',
+        ownedShas: ['f1'],
+        children: [
+          {
+            branchRef: 'fixup',
+            headSha: 'x1',
+            baseSha: 'f1',
+            ownedShas: ['x1'],
+            children: [],
+          },
+        ],
+      },
+      targetBaseSha: 'm3',
+      targetBranchRef: 'main',
+    };
+
+    const projected = applyRebaseIntentToState(state, intent);
+    const rows = layoutRows(projected);
+
+    const featureTip = rows.find(
+      (row) => row.kind === 'commit' && row.branchName === 'feature' && row.isBranchTip
+    );
+    const fixupTip = rows.find(
+      (row) => row.kind === 'commit' && row.branchName === 'fixup' && row.isBranchTip
+    );
+
+    expect(featureTip).toBeDefined();
+    expect(fixupTip).toBeDefined();
   });
 });

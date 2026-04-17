@@ -247,12 +247,32 @@ function createBranchLookupIndex(branches: StackBranch[]): BranchLookupIndex {
     }
   }
 
+  // When multiple branches share a SHA, prefer trunk so dropping onto the
+  // visible trunk row always resolves to trunk rather than a sibling branch
+  // that happens to be stuck at the same commit.
+  sortIndexPreferringTrunk(branchRefsByHeadSha, branchByRef);
+  sortIndexPreferringTrunk(branchRefsByOwnedSha, branchByRef);
+  sortIndexPreferringTrunk(branchRefsByRelevantSha, branchByRef);
+
   return {
     branchByRef,
     branchRefsByHeadSha,
     branchRefsByOwnedSha,
     branchRefsByRelevantSha,
   };
+}
+
+function sortIndexPreferringTrunk(
+  index: Map<string, string[]>,
+  branchByRef: ReadonlyMap<string, StackBranch>
+): void {
+  for (const refs of index.values()) {
+    refs.sort((left, right) => {
+      const leftTrunk = branchByRef.get(left)?.isTrunk ? 1 : 0;
+      const rightTrunk = branchByRef.get(right)?.isTrunk ? 1 : 0;
+      return rightTrunk - leftTrunk;
+    });
+  }
 }
 
 function createRebaseIntentContext(

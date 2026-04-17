@@ -49,6 +49,30 @@ describe('rebase intent helpers', () => {
     expect(createRebaseIntent(state, 'alias', 'm3')).toBeNull();
   });
 
+  it('prefers trunk as the target branch when multiple branches share the drop SHA', () => {
+    const state = createState();
+    // A zero-commit sibling branch parked on trunk's head.
+    state.branches.unshift({
+      ref: 'chore/alias',
+      headSha: 'm3',
+      baseSha: 'm3',
+      parentRef: 'main',
+      childRefs: [],
+      ownedShas: [],
+      commits: [],
+      isTrunk: false,
+      isRemote: false,
+      isCurrent: false,
+      worktreePath: null,
+      worktreePeacockColor: null,
+      pullRequest: null,
+    });
+
+    const intent = createRebaseIntent(state, 'feature', 'm3');
+
+    expect(intent?.targetBranchRef).toBe('main');
+  });
+
   it('projects the moved branch under the new parent while preserving descendants', () => {
     const state = createState();
     const intent = createRebaseIntent(state, 'feature', 'm3') as RebaseIntent;
