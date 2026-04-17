@@ -13,6 +13,8 @@ interface LayoutContext {
   branchesByRef: Map<string, StackBranch>;
   commitTimesBySha: Map<string, number>;
   childRefsByParentAndBase: Map<string, ChildRefsByBaseSha>;
+  additionalRefsByPrimary: Map<string, string[]>;
+  collapsedBranchRefs: Set<string>;
 }
 
 export interface RowLane {
@@ -45,12 +47,17 @@ export interface RowModel {
   worktreePath: string | null;
   worktreePeacockColor: string | null;
   pullRequest: PullRequestInfo | null;
+  additionalBranchRefs: string[];
 }
 
 export function layoutRows(state: StackState): RowModel[] {
-  const { branchesByRef, commitTimesBySha, childRefsByParentAndBase } = createLayoutContext(
-    state.branches
-  );
+  const {
+    branchesByRef,
+    commitTimesBySha,
+    childRefsByParentAndBase,
+    additionalRefsByPrimary,
+    collapsedBranchRefs,
+  } = createLayoutContext(state.branches);
   const laneOf = (branchRef: string): number => (branchesByRef.get(branchRef)?.isTrunk ? 0 : 1);
   const colorOf = (branchRef: string): string => {
     const branch = branchesByRef.get(branchRef);
@@ -70,6 +77,9 @@ export function layoutRows(state: StackState): RowModel[] {
   const rootRefs = getRootRefs(state.branches, branchesByRef, commitTimesBySha);
 
   const emitBranch = (branchRef: string): void => {
+    if (collapsedBranchRefs.has(branchRef)) {
+      return;
+    }
     const branch = branchesByRef.get(branchRef);
     if (!branch) {
       return;
@@ -103,6 +113,7 @@ export function layoutRows(state: StackState): RowModel[] {
         worktreePath: branch.worktreePath,
         worktreePeacockColor: branch.worktreePeacockColor,
         pullRequest: branch.pullRequest,
+        additionalBranchRefs: additionalRefsByPrimary.get(branch.ref) ?? [],
       });
     }
 
@@ -138,6 +149,9 @@ export function layoutRows(state: StackState): RowModel[] {
         worktreePath: isBranchTip ? branch.worktreePath : null,
         worktreePeacockColor: isBranchTip ? branch.worktreePeacockColor : null,
         pullRequest: isBranchTip ? branch.pullRequest : null,
+        additionalBranchRefs: isBranchTip
+          ? additionalRefsByPrimary.get(branch.ref) ?? []
+          : [],
       });
     }
 
@@ -160,6 +174,7 @@ export function layoutRows(state: StackState): RowModel[] {
         worktreePath: null,
         worktreePeacockColor: null,
         pullRequest: null,
+        additionalBranchRefs: [],
       });
     }
   };
@@ -189,12 +204,69 @@ function createLayoutContext(branches: StackBranch[]): LayoutContext {
     branchesByRef,
     commitTimesBySha
   );
+  const { additionalRefsByPrimary, collapsedBranchRefs } = planSameShaCollapse(branches);
 
   return {
     branchesByRef,
     commitTimesBySha,
     childRefsByParentAndBase,
+    additionalRefsByPrimary,
+    collapsedBranchRefs,
   };
+}
+
+// When two or more local branches share a commit SHA — siblings at the same
+// parent, a child sitting on its parent's tip, or any other configuration —
+// only the primary gets its own row; the rest become a `+N` badge on that
+// row. Remote tracking branches are kept as their own rows so they remain
+// visible alongside the locals.
+function planSameShaCollapse(branches: StackBranch[]): {
+  additionalRefsByPrimary: Map<string, string[]>;
+  collapsedBranchRefs: Set<string>;
+} {
+  const branchesByHeadSha = new Map<string, StackBranch[]>();
+  for (const branch of branches) {
+    if (branch.isRemote) {
+      continue;
+    }
+    const list = branchesByHeadSha.get(branch.headSha) ?? [];
+    list.push(branch);
+    branchesByHeadSha.set(branch.headSha, list);
+  }
+
+  const additionalRefsByPrimary = new Map<string, string[]>();
+  const collapsedBranchRefs = new Set<string>();
+
+  for (const group of branchesByHeadSha.values()) {
+    if (group.length < 2) {
+      continue;
+    }
+
+    // Primary order: current first, then trunk, then input order. Trunk wins
+    // the tiebreaker when nobody in the group is current so that, e.g., a
+    // disposable child branch sitting on `main` collapses into `main`'s row.
+    const sorted = [...group].sort((a, b) => {
+      if (a.isCurrent !== b.isCurrent) {
+        return a.isCurrent ? -1 : 1;
+      }
+      if (a.isTrunk !== b.isTrunk) {
+        return a.isTrunk ? -1 : 1;
+      }
+      return 0;
+    });
+
+    const primary = sorted[0];
+    const rest = sorted.slice(1);
+    additionalRefsByPrimary.set(
+      primary.ref,
+      rest.map((branch) => branch.ref)
+    );
+    for (const branch of rest) {
+      collapsedBranchRefs.add(branch.ref);
+    }
+  }
+
+  return { additionalRefsByPrimary, collapsedBranchRefs };
 }
 
 function branchesByRefIndex(branches: StackBranch[]): Map<string, StackBranch> {

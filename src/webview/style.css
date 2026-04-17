@@ -224,6 +224,28 @@ body {
   font-weight: 600;
 }
 
+.label.branch-overflow {
+  background: color-mix(
+    in srgb,
+    var(--vscode-button-secondaryBackground, #3a3d41) 70%,
+    transparent
+  );
+  color: var(--vscode-descriptionForeground);
+  border: 1px solid
+    color-mix(in srgb, var(--vscode-descriptionForeground) 35%, transparent);
+  font-weight: 500;
+  padding: 0 5px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.label.branch-overflow:hover,
+.label.branch-overflow:focus-visible {
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-foreground);
+  outline: none;
+}
+
 .label.worktree {
   background: transparent;
   color: var(--vscode-descriptionForeground);

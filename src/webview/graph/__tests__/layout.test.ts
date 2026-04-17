@@ -477,4 +477,278 @@ describe('layoutRows', () => {
     expect(branchHeader?.pullRequest).toBeNull();
     expect(mainRow?.pullRequest).toBeNull();
   });
+
+  it('collapses sibling local branches at the same headSha into a single tip row', () => {
+    const state: StackState = {
+      branches: [
+        {
+          ref: 'main',
+          headSha: 'm1',
+          baseSha: 'm1',
+          parentRef: null,
+          childRefs: ['feature', 'feature-wip'],
+          ownedShas: ['m1'],
+          commits: [{ sha: 'm1', message: 'main', author: 'dev', timeMs: 1, parentSha: '' }],
+          isTrunk: true,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'feature',
+          headSha: 'f1',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: [],
+          ownedShas: ['f1'],
+          commits: [{ sha: 'f1', message: 'feature', author: 'dev', timeMs: 5, parentSha: 'm1' }],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'feature-wip',
+          headSha: 'f1',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: [],
+          ownedShas: ['f1'],
+          commits: [{ sha: 'f1', message: 'feature', author: 'dev', timeMs: 5, parentSha: 'm1' }],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+      ],
+      trunk: 'main',
+      current: 'main',
+      repoRoot: '/repo',
+      error: null,
+      pendingRebase: null,
+    };
+
+    const rows = layoutRows(state);
+    const tipRows = rows.filter(
+      (row) =>
+        row.kind === 'commit' &&
+        row.isBranchTip &&
+        (row.branchName === 'feature' || row.branchName === 'feature-wip')
+    );
+
+    expect(tipRows).toHaveLength(1);
+    expect(tipRows[0].branchName).toBe('feature');
+    expect(tipRows[0].additionalBranchRefs).toEqual(['feature-wip']);
+  });
+
+  it('promotes the current branch to primary when it shares a SHA with siblings', () => {
+    const state: StackState = {
+      branches: [
+        {
+          ref: 'main',
+          headSha: 'm1',
+          baseSha: 'm1',
+          parentRef: null,
+          childRefs: ['aaa-feature', 'zzz-feature'],
+          ownedShas: ['m1'],
+          commits: [{ sha: 'm1', message: 'main', author: 'dev', timeMs: 1, parentSha: '' }],
+          isTrunk: true,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'aaa-feature',
+          headSha: 's1',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: [],
+          ownedShas: ['s1'],
+          commits: [{ sha: 's1', message: 'shared', author: 'dev', timeMs: 5, parentSha: 'm1' }],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'zzz-feature',
+          headSha: 's1',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: [],
+          ownedShas: ['s1'],
+          commits: [{ sha: 's1', message: 'shared', author: 'dev', timeMs: 5, parentSha: 'm1' }],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: true,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+      ],
+      trunk: 'main',
+      current: 'zzz-feature',
+      repoRoot: '/repo',
+      error: null,
+      pendingRebase: null,
+    };
+
+    const rows = layoutRows(state);
+    const tipRows = rows.filter(
+      (row) =>
+        row.kind === 'commit' &&
+        row.isBranchTip &&
+        (row.branchName === 'aaa-feature' || row.branchName === 'zzz-feature')
+    );
+
+    expect(tipRows).toHaveLength(1);
+    expect(tipRows[0].branchName).toBe('zzz-feature');
+    expect(tipRows[0].isCurrent).toBe(true);
+    expect(tipRows[0].additionalBranchRefs).toEqual(['aaa-feature']);
+  });
+
+  it('keeps remote siblings as their own rows even when sharing a SHA with locals', () => {
+    const state: StackState = {
+      branches: [
+        {
+          ref: 'main',
+          headSha: 'm1',
+          baseSha: 'm1',
+          parentRef: null,
+          childRefs: ['feature', 'feature-wip', 'origin/feature'],
+          ownedShas: ['m1'],
+          commits: [{ sha: 'm1', message: 'main', author: 'dev', timeMs: 1, parentSha: '' }],
+          isTrunk: true,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'feature',
+          headSha: 'f1',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: [],
+          ownedShas: ['f1'],
+          commits: [{ sha: 'f1', message: 'feature', author: 'dev', timeMs: 5, parentSha: 'm1' }],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'feature-wip',
+          headSha: 'f1',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: [],
+          ownedShas: ['f1'],
+          commits: [{ sha: 'f1', message: 'feature', author: 'dev', timeMs: 5, parentSha: 'm1' }],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'origin/feature',
+          headSha: 'f1',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: [],
+          ownedShas: ['f1'],
+          commits: [{ sha: 'f1', message: 'feature', author: 'dev', timeMs: 5, parentSha: 'm1' }],
+          isTrunk: false,
+          isRemote: true,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+      ],
+      trunk: 'main',
+      current: 'main',
+      repoRoot: '/repo',
+      error: null,
+      pendingRebase: null,
+    };
+
+    const rows = layoutRows(state);
+    const tipRows = rows.filter((row) => row.kind === 'commit' && row.isBranchTip);
+
+    const localPrimary = tipRows.find((row) => row.branchName === 'feature');
+    const remoteRow = tipRows.find((row) => row.branchName === 'origin/feature');
+    const featureWipRow = tipRows.find((row) => row.branchName === 'feature-wip');
+
+    expect(localPrimary?.additionalBranchRefs).toEqual(['feature-wip']);
+    expect(remoteRow).toBeDefined();
+    expect(remoteRow?.additionalBranchRefs).toEqual([]);
+    expect(featureWipRow).toBeUndefined();
+  });
+
+  it('folds an empty child branch into its parent trunk row when they share a SHA', () => {
+    const state: StackState = {
+      branches: [
+        {
+          ref: 'main',
+          headSha: 'm1',
+          baseSha: 'm1',
+          parentRef: null,
+          childRefs: ['chore/cleanup'],
+          ownedShas: ['m1'],
+          commits: [{ sha: 'm1', message: 'main', author: 'dev', timeMs: 1, parentSha: '' }],
+          isTrunk: true,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'chore/cleanup',
+          headSha: 'm1',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: [],
+          ownedShas: [],
+          commits: [],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+      ],
+      trunk: 'main',
+      current: 'main',
+      repoRoot: '/repo',
+      error: null,
+      pendingRebase: null,
+    };
+
+    const rows = layoutRows(state);
+    const choreRow = rows.find((row) => row.branchName === 'chore/cleanup');
+    const mainRow = rows.find(
+      (row) => row.kind === 'commit' && row.branchName === 'main' && row.commit?.sha === 'm1'
+    );
+
+    expect(choreRow).toBeUndefined();
+    expect(mainRow?.additionalBranchRefs).toEqual(['chore/cleanup']);
+  });
 });

@@ -165,6 +165,9 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       case 'checkoutBranch':
         await this.performCheckoutBranch(message.branchRef);
         return;
+      case 'pickAndCheckoutBranch':
+        await this.performPickAndCheckoutBranch(message.branchRefs);
+        return;
       case 'forcePushBranch':
         await this.performForcePushBranch(message.branchRef);
         return;
@@ -270,6 +273,19 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     await git.checkout(branchRef);
     void vscode.commands.executeCommand('git.refresh');
     await this.refresh();
+  }
+
+  private async performPickAndCheckoutBranch(branchRefs: string[]): Promise<void> {
+    if (branchRefs.length === 0) {
+      return;
+    }
+    const picked = await vscode.window.showQuickPick(branchRefs, {
+      placeHolder: 'Check out branch',
+    });
+    if (!picked) {
+      return;
+    }
+    await this.performCheckoutBranch(picked);
   }
 
   private async performCreateWorkingCommit(): Promise<void> {

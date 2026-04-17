@@ -99,7 +99,8 @@ function renderRow(
         row.isTrunkBranch,
         row.worktreePath,
         row.worktreePeacockColor,
-        canCreatePullRequestByBranch.get(row.branchName) ?? false
+        canCreatePullRequestByBranch.get(row.branchName) ?? false,
+        row.additionalBranchRefs
       )
     );
   }
@@ -206,7 +207,8 @@ function createRowLabels(
   isTrunkBranch: boolean,
   worktreePath: string | null,
   worktreePeacockColor: string | null,
-  canCreatePullRequest: boolean
+  canCreatePullRequest: boolean,
+  additionalBranchRefs: string[]
 ): HTMLElement {
   const container = document.createElement('div');
   container.className = 'label-container';
@@ -219,10 +221,29 @@ function createRowLabels(
       canCreatePullRequest
     )
   );
+  if (additionalBranchRefs.length > 0) {
+    container.append(createBranchOverflowBadge(branchName, additionalBranchRefs));
+  }
   if (worktreePath) {
     container.append(createWorktreeLabel(branchName, worktreePath, worktreePeacockColor));
   }
   return container;
+}
+
+function createBranchOverflowBadge(
+  primaryRef: string,
+  additionalRefs: string[]
+): HTMLElement {
+  const badge = document.createElement('span');
+  badge.className = 'label branch-overflow';
+  badge.dataset.branchOverflowRefs = JSON.stringify(additionalRefs);
+  badge.dataset.branchOverflowPrimary = primaryRef;
+  const noun = additionalRefs.length === 1 ? 'branch' : 'branches';
+  badge.title = `${additionalRefs.length} more ${noun} at this commit:\n${additionalRefs.join('\n')}`;
+  badge.setAttribute('role', 'button');
+  badge.tabIndex = 0;
+  badge.textContent = `+${additionalRefs.length}`;
+  return badge;
 }
 
 function createBranchLabel(

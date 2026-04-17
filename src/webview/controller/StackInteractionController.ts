@@ -99,9 +99,12 @@ export class StackInteractionController {
       return;
     }
 
-    const sourceRow = (event.target as HTMLElement).closest<HTMLElement>(
-      '.row[data-drag-branch-ref]'
-    );
+    const targetElement = event.target as HTMLElement;
+    if (targetElement.closest('.label.branch-overflow')) {
+      return;
+    }
+
+    const sourceRow = targetElement.closest<HTMLElement>('.row[data-drag-branch-ref]');
     const branchRef = sourceRow?.dataset.dragBranchRef;
     if (!branchRef) {
       return;
@@ -115,6 +118,22 @@ export class StackInteractionController {
   }
 
   handleClick(event: MouseEvent): void {
+    const overflowBadge = (event.target as HTMLElement).closest<HTMLElement>(
+      '.label.branch-overflow'
+    );
+    if (overflowBadge) {
+      if (this.awaitingHostSync || this.drag.activeBranchRef) {
+        return;
+      }
+      const branchRefs = parseBranchOverflowRefs(overflowBadge.dataset.branchOverflowRefs);
+      if (branchRefs.length > 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.postMessage({ type: 'pickAndCheckoutBranch', branchRefs });
+      }
+      return;
+    }
+
     const actionButton = (event.target as HTMLElement).closest<HTMLButtonElement>(
       'button[data-action]'
     );
@@ -393,6 +412,21 @@ function isRebaseAction(action: string | undefined): action is RebaseAction {
 
 function isForcePushAction(action: string | undefined): action is ForcePushAction {
   return action === 'force-push-branch';
+}
+
+function parseBranchOverflowRefs(serialized: string | undefined): string[] {
+  if (!serialized) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(serialized);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.filter((entry): entry is string => typeof entry === 'string');
+  } catch {
+    return [];
+  }
 }
 
 function areStackStatesVisuallyEqual(left: StackState, right: StackState): boolean {
