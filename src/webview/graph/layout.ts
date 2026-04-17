@@ -1,5 +1,5 @@
 import { collectIdleShas, collectPromptingShas } from '../../rebase/intent';
-import type { StackBranch, StackState } from '../../protocol';
+import type { PullRequestInfo, StackBranch, StackState } from '../../protocol';
 
 const GRAPH_COLOR = 'var(--vscode-descriptionForeground, #858585)';
 const TRUNK_COLOR = 'var(--vscode-descriptionForeground, #858585)';
@@ -44,6 +44,7 @@ export interface RowModel {
   isDraggable: boolean;
   worktreePath: string | null;
   worktreePeacockColor: string | null;
+  pullRequest: PullRequestInfo | null;
 }
 
 export function layoutRows(state: StackState): RowModel[] {
@@ -101,6 +102,7 @@ export function layoutRows(state: StackState): RowModel[] {
         isDraggable: !branch.isTrunk && branch.ownedShas.length > 0,
         worktreePath: branch.worktreePath,
         worktreePeacockColor: branch.worktreePeacockColor,
+        pullRequest: branch.pullRequest,
       });
     }
 
@@ -135,6 +137,7 @@ export function layoutRows(state: StackState): RowModel[] {
         isDraggable: isBranchTip && !branch.isTrunk && branch.ownedShas.length > 0,
         worktreePath: isBranchTip ? branch.worktreePath : null,
         worktreePeacockColor: isBranchTip ? branch.worktreePeacockColor : null,
+        pullRequest: isBranchTip ? branch.pullRequest : null,
       });
     }
 
@@ -156,6 +159,7 @@ export function layoutRows(state: StackState): RowModel[] {
         isDraggable: false,
         worktreePath: null,
         worktreePeacockColor: null,
+        pullRequest: null,
       });
     }
   };

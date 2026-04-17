@@ -30,6 +30,7 @@ interface DragSession {
 }
 
 type RebaseAction = 'confirm-rebase' | 'cancel-rebase';
+type ForcePushAction = 'force-push-branch';
 
 const DRAG_THRESHOLD_PX = 4;
 const AUTO_SCROLL_EDGE_PX = 40;
@@ -114,14 +115,23 @@ export class StackInteractionController {
   }
 
   handleClick(event: MouseEvent): void {
-    if (this.awaitingHostSync) {
-      return;
-    }
-
     const actionButton = (event.target as HTMLElement).closest<HTMLButtonElement>(
       'button[data-action]'
     );
     const action = actionButton?.dataset.action;
+
+    if (isForcePushAction(action)) {
+      const branchRef = actionButton?.dataset.branchRef;
+      if (branchRef) {
+        this.postMessage({ type: 'forcePushBranch', branchRef });
+      }
+      return;
+    }
+
+    if (this.awaitingHostSync) {
+      return;
+    }
+
     if (!isRebaseAction(action)) {
       return;
     }
@@ -379,6 +389,10 @@ export class StackInteractionController {
 
 function isRebaseAction(action: string | undefined): action is RebaseAction {
   return action === 'confirm-rebase' || action === 'cancel-rebase';
+}
+
+function isForcePushAction(action: string | undefined): action is ForcePushAction {
+  return action === 'force-push-branch';
 }
 
 function areStackStatesVisuallyEqual(left: StackState, right: StackState): boolean {

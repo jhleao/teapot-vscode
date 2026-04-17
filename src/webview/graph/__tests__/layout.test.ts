@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { StackState } from '../../../protocol';
+import type { PullRequestInfo, StackState } from '../../../protocol';
 import { layoutRows } from '../layout';
 
 describe('layoutRows', () => {
@@ -19,6 +19,7 @@ describe('layoutRows', () => {
           isCurrent: false,
           worktreePath: null,
           worktreePeacockColor: null,
+          pullRequest: null,
         },
         {
           ref: 'feature',
@@ -36,6 +37,7 @@ describe('layoutRows', () => {
           isCurrent: false,
           worktreePath: null,
           worktreePeacockColor: null,
+          pullRequest: null,
         },
         {
           ref: 'fixup',
@@ -50,6 +52,7 @@ describe('layoutRows', () => {
           isCurrent: true,
           worktreePath: null,
           worktreePeacockColor: null,
+          pullRequest: null,
         },
       ],
       trunk: 'main',
@@ -88,6 +91,7 @@ describe('layoutRows', () => {
           isCurrent: false,
           worktreePath: null,
           worktreePeacockColor: null,
+          pullRequest: null,
         },
         {
           ref: 'aaa-feature',
@@ -102,6 +106,7 @@ describe('layoutRows', () => {
           isCurrent: false,
           worktreePath: null,
           worktreePeacockColor: null,
+          pullRequest: null,
         },
         {
           ref: 'zzz-feature',
@@ -116,6 +121,7 @@ describe('layoutRows', () => {
           isCurrent: true,
           worktreePath: null,
           worktreePeacockColor: null,
+          pullRequest: null,
         },
       ],
       trunk: 'main',
@@ -154,6 +160,7 @@ describe('layoutRows', () => {
           isCurrent: false,
           worktreePath: null,
           worktreePeacockColor: null,
+          pullRequest: null,
         },
         {
           ref: 'future-feature',
@@ -168,6 +175,7 @@ describe('layoutRows', () => {
           isCurrent: false,
           worktreePath: null,
           worktreePeacockColor: null,
+          pullRequest: null,
         },
         {
           ref: 'legacy-feature',
@@ -182,6 +190,7 @@ describe('layoutRows', () => {
           isCurrent: false,
           worktreePath: null,
           worktreePeacockColor: null,
+          pullRequest: null,
         },
       ],
       trunk: 'main',
@@ -230,6 +239,7 @@ describe('layoutRows', () => {
           isCurrent: false,
           worktreePath: null,
           worktreePeacockColor: null,
+          pullRequest: null,
         },
         {
           ref: 'feature',
@@ -247,6 +257,7 @@ describe('layoutRows', () => {
           isCurrent: false,
           worktreePath: null,
           worktreePeacockColor: null,
+          pullRequest: null,
         },
         {
           ref: 'fixup',
@@ -261,6 +272,7 @@ describe('layoutRows', () => {
           isCurrent: true,
           worktreePath: null,
           worktreePeacockColor: null,
+          pullRequest: null,
         },
       ],
       trunk: 'main',
@@ -304,6 +316,7 @@ describe('layoutRows', () => {
           isCurrent: true,
           worktreePath: null,
           worktreePeacockColor: null,
+          pullRequest: null,
         },
         {
           ref: 'feature',
@@ -318,6 +331,7 @@ describe('layoutRows', () => {
           isCurrent: false,
           worktreePath: null,
           worktreePeacockColor: null,
+          pullRequest: null,
         },
       ],
       trunk: 'main',
@@ -364,6 +378,7 @@ describe('layoutRows', () => {
           isCurrent: false,
           worktreePath: null,
           worktreePeacockColor: null,
+          pullRequest: null,
         },
         {
           ref: 'feature',
@@ -378,6 +393,7 @@ describe('layoutRows', () => {
           isCurrent: true,
           worktreePath: null,
           worktreePeacockColor: null,
+          pullRequest: null,
         },
       ],
       trunk: 'main',
@@ -393,5 +409,72 @@ describe('layoutRows', () => {
 
     expect(mainRow).toMatchObject({ isTrunkBranch: true });
     expect(featureRow).toMatchObject({ isTrunkBranch: false, isCurrent: true });
+  });
+
+  it('exposes pullRequest only on the branch tip row and leaves other rows null', () => {
+    const pullRequest: PullRequestInfo = {
+      number: 7,
+      url: 'https://github.com/a/b/pull/7',
+      state: 'open',
+      isInSync: true,
+    };
+
+    const state: StackState = {
+      branches: [
+        {
+          ref: 'main',
+          headSha: 'm1',
+          baseSha: 'm1',
+          parentRef: null,
+          childRefs: ['feature'],
+          ownedShas: ['m1'],
+          commits: [{ sha: 'm1', message: 'main', author: 'dev', timeMs: 1, parentSha: '' }],
+          isTrunk: true,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'feature',
+          headSha: 'f2',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: [],
+          ownedShas: ['f2', 'f1'],
+          commits: [
+            { sha: 'f2', message: 'tip', author: 'dev', timeMs: 3, parentSha: 'f1' },
+            { sha: 'f1', message: 'base', author: 'dev', timeMs: 2, parentSha: 'm1' },
+          ],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: true,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest,
+        },
+      ],
+      trunk: 'main',
+      current: 'feature',
+      repoRoot: '/repo',
+      error: null,
+      pendingRebase: null,
+    };
+
+    const rows = layoutRows(state);
+    const featureTip = rows.find(
+      (row) => row.kind === 'commit' && row.branchName === 'feature' && row.isBranchTip
+    );
+    const featureBase = rows.find(
+      (row) => row.kind === 'commit' && row.branchName === 'feature' && !row.isBranchTip
+    );
+    const branchHeader = rows.find((row) => row.kind === 'branch-header');
+    const mainRow = rows.find((row) => row.kind === 'commit' && row.branchName === 'main');
+
+    expect(featureTip?.pullRequest).toEqual(pullRequest);
+    expect(featureBase?.pullRequest).toBeNull();
+    expect(branchHeader?.pullRequest).toBeNull();
+    expect(mainRow?.pullRequest).toBeNull();
   });
 });

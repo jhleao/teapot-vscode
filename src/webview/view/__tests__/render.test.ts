@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import type { PullRequestInfo } from '../../../protocol';
 import {
   buildBranchBadgeContext,
   buildCommitRowContext,
+  buildPullRequestLabelViewModel,
   buildWorktreeBadgeContext,
   createRebaseActionViewModel,
   normalizeCssColor,
@@ -219,6 +221,66 @@ describe('pickReadableForeground', () => {
   it('returns null for unparseable input so the default style is kept', () => {
     expect(pickReadableForeground('not-a-color')).toBeNull();
     expect(pickReadableForeground('rgb(10, 20, 30)')).toBeNull();
+  });
+});
+
+describe('buildPullRequestLabelViewModel', () => {
+  const basePr: PullRequestInfo = {
+    number: 42,
+    url: 'https://github.com/a/b/pull/42',
+    state: 'open',
+    isInSync: true,
+  };
+
+  it('renders an open in-sync PR as a plain #N link', () => {
+    const vm = buildPullRequestLabelViewModel(basePr);
+
+    expect(vm).toEqual({
+      url: 'https://github.com/a/b/pull/42',
+      text: '#42',
+      title: 'Open pull request',
+      cssClasses: ['label', 'pr', 'state-open'],
+    });
+  });
+
+  it('adds the out-of-sync class when an open PR is behind local', () => {
+    const vm = buildPullRequestLabelViewModel({ ...basePr, isInSync: false });
+
+    expect(vm.cssClasses).toEqual(['label', 'pr', 'state-open', 'out-of-sync']);
+    expect(vm.title).toContain('out of sync');
+  });
+
+  it('applies out-of-sync to drafts too since they are still live', () => {
+    const vm = buildPullRequestLabelViewModel({
+      ...basePr,
+      state: 'draft',
+      isInSync: false,
+    });
+
+    expect(vm.cssClasses).toContain('out-of-sync');
+    expect(vm.text).toBe('#42 (Draft)');
+  });
+
+  it('never marks merged PRs as out-of-sync even if isInSync is false', () => {
+    const vm = buildPullRequestLabelViewModel({
+      ...basePr,
+      state: 'merged',
+      isInSync: false,
+    });
+
+    expect(vm.cssClasses).not.toContain('out-of-sync');
+    expect(vm.text).toBe('#42');
+  });
+
+  it('renders closed PRs with the closed suffix and no sync warning', () => {
+    const vm = buildPullRequestLabelViewModel({
+      ...basePr,
+      state: 'closed',
+      isInSync: false,
+    });
+
+    expect(vm.cssClasses).toEqual(['label', 'pr', 'state-closed']);
+    expect(vm.text).toBe('#42 (Closed)');
   });
 });
 

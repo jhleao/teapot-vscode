@@ -49,6 +49,7 @@ describe('dragAndDrop helpers', () => {
           isCurrent: true,
           worktreePath: null,
           worktreePeacockColor: null,
+          pullRequest: null,
         },
         {
           ref: 'feature',
@@ -63,6 +64,7 @@ describe('dragAndDrop helpers', () => {
           isCurrent: false,
           worktreePath: null,
           worktreePeacockColor: null,
+          pullRequest: null,
         },
         {
           ref: 'fixup',
@@ -77,6 +79,7 @@ describe('dragAndDrop helpers', () => {
           isCurrent: false,
           worktreePath: null,
           worktreePeacockColor: null,
+          pullRequest: null,
         },
       ],
       trunk: 'main',

@@ -9,6 +9,8 @@ import type { HostToWebviewMessage, RebaseIntent, StackState, WebviewToHostMessa
 import { GitRebaseExecutor } from '../rebase/executor';
 import { isRebaseIntentValid } from '../rebase/intent';
 import { applyRebaseIntentToState } from '../rebase/project';
+import { GitHubAuthUtils } from '../github/auth';
+import { GitHubPrEnricher } from './githubPrEnricher';
 import { GitRefsWatcher } from './gitWatcher';
 import { renderStackWebviewHtml } from './webviewHtml';
 
@@ -24,13 +26,21 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   private operationChain: Promise<void> = Promise.resolve();
   private refreshTask: Promise<void> | null = null;
   private refreshPending = false;
+  private readonly prEnricher = new GitHubPrEnricher();
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.disposables.push(
       vscode.workspace.onDidChangeWorkspaceFolders(() => {
         void this.refresh();
+      }),
+      vscode.authentication.onDidChangeSessions((event) => {
+        if (event.provider.id === 'github') {
+          void this.updateGitHubAuthContext();
+        }
       })
     );
+
+    void this.updateGitHubAuthContext();
   }
 
   async resolveWebviewView(view: vscode.WebviewView): Promise<void> {
@@ -82,6 +92,10 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
   createWorktree(branchRef: string): void {
     this.enqueueOperation(() => this.performCreateWorktree(branchRef));
+  }
+
+  signInToGitHub(): void {
+    this.enqueueOperation(() => this.performSignInToGitHub());
   }
 
   async refresh(): Promise<void> {
@@ -136,6 +150,9 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         return;
       case 'checkoutBranch':
         await this.performCheckoutBranch(message.branchRef);
+        return;
+      case 'forcePushBranch':
+        await this.performForcePushBranch(message.branchRef);
         return;
     }
   }
@@ -390,6 +407,47 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     );
   }
 
+  private async performSignInToGitHub(): Promise<void> {
+    const session = await GitHubAuthUtils.promptForSession();
+    await this.updateGitHubAuthContext();
+    if (!session) {
+      return;
+    }
+    await this.refresh();
+  }
+
+  private async performForcePushBranch(branchRef: string): Promise<void> {
+    const git = await this.openGit();
+    if (!git) {
+      return;
+    }
+
+    try {
+      await git.forcePushBranch(branchRef);
+      void vscode.window.showInformationMessage(`Force pushed "${branchRef}"`);
+      await this.refresh();
+    } catch (error) {
+      void vscode.window.showErrorMessage(
+        `Failed to push "${branchRef}": ${toErrorMessage(error)}`
+      );
+    }
+  }
+
+  private async updateGitHubAuthContext(): Promise<void> {
+    let valid = false;
+    try {
+      const session = await GitHubAuthUtils.getSilentSession();
+      valid = !!session;
+    } catch {
+      valid = false;
+    }
+    await vscode.commands.executeCommand(
+      'setContext',
+      'teapot.gitHubSessionValid',
+      valid
+    );
+  }
+
   private async performCreateWorktree(branchRef: string): Promise<void> {
     const git = await this.openGit();
     if (!git) {
@@ -463,8 +521,38 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     }
 
     this.cachedWorkspaceRoot = workspaceRoot;
-    this.cachedStackState = await GitStackStateLoader.load(workspaceRoot);
+    const loaded = await GitStackStateLoader.load(workspaceRoot);
+    this.cachedStackState = await this.enrichWithPullRequests(loaded, workspaceRoot);
     return this.cachedStackState;
+  }
+
+  private async enrichWithPullRequests(
+    state: StackState,
+    workspaceRoot: string
+  ): Promise<StackState> {
+    if (state.error || state.branches.length === 0) {
+      return state;
+    }
+
+    const repoRoot = state.repoRoot ?? workspaceRoot;
+
+    try {
+      const prByBranch = await this.prEnricher.enrich(repoRoot, state.branches);
+      if (prByBranch.size === 0) {
+        return state;
+      }
+
+      return {
+        ...state,
+        branches: state.branches.map((branch) => ({
+          ...branch,
+          pullRequest: prByBranch.get(branch.ref) ?? null,
+        })),
+      };
+    } catch (error) {
+      console.warn('teapot: failed to enrich with GitHub PRs', error);
+      return state;
+    }
   }
 
   private async presentState(

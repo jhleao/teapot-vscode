@@ -1,4 +1,4 @@
-import type { RebaseIntent, StackState } from '../../protocol';
+import type { PullRequestInfo, RebaseIntent, StackState } from '../../protocol';
 import { layoutRows, type RowModel } from '../graph/layout';
 import { renderRowGraph } from '../graph/svg';
 
@@ -110,6 +110,15 @@ function renderRow(
   }
 
   rowElement.append(subject);
+  if (row.pullRequest) {
+    const prGroup = document.createElement('div');
+    prGroup.className = 'pr-group';
+    if (isPullRequestOutOfSync(row.pullRequest)) {
+      prGroup.append(createForcePushButton(row.branchName));
+    }
+    prGroup.append(createPullRequestLabel(row.pullRequest));
+    rowElement.append(prGroup);
+  }
   if (row.showsRebaseActions) {
     rowElement.append(
       createRebaseActions({
@@ -120,6 +129,72 @@ function renderRow(
     );
   }
   return rowElement;
+}
+
+function createPullRequestLabel(pullRequest: PullRequestInfo): HTMLAnchorElement {
+  const viewModel = buildPullRequestLabelViewModel(pullRequest);
+  const anchor = document.createElement('a');
+  anchor.className = viewModel.cssClasses.join(' ');
+  anchor.href = viewModel.url;
+  anchor.target = '_blank';
+  anchor.rel = 'noreferrer';
+  anchor.title = viewModel.title;
+
+  anchor.append(createPullRequestIcon());
+
+  const text = document.createElement('span');
+  text.className = 'label-text';
+  text.textContent = viewModel.text;
+  anchor.append(text);
+
+  return anchor;
+}
+
+function createPullRequestIcon(): SVGElement {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'label-icon');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('fill', 'currentColor');
+  svg.setAttribute('aria-hidden', 'true');
+
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute(
+    'd',
+    'M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z'
+  );
+  svg.append(path);
+  return svg;
+}
+
+function createForcePushButton(branchRef: string): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.className = 'pr-action force-push';
+  button.type = 'button';
+  button.dataset.action = 'force-push-branch';
+  button.dataset.branchRef = branchRef;
+  button.title = `Force push "${branchRef}" (--force-with-lease)`;
+  button.setAttribute('aria-label', `Force push ${branchRef}`);
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'label-icon');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.75');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', 'M8 13V3M4 7l4-4 4 4');
+  svg.append(path);
+  button.append(svg);
+  return button;
+}
+
+export function isPullRequestOutOfSync(pullRequest: PullRequestInfo): boolean {
+  const isLive = pullRequest.state === 'open' || pullRequest.state === 'draft';
+  return isLive && !pullRequest.isInSync;
 }
 
 function createRowLabels(
@@ -390,6 +465,50 @@ export function buildCommitRowContext(options: {
     commitSha: options.commitSha,
     currentMessage: options.currentMessage,
     teapotCommitIsHead: options.isHead,
+  };
+}
+
+export interface PullRequestLabelViewModel {
+  url: string;
+  text: string;
+  title: string;
+  cssClasses: string[];
+}
+
+const PR_STATE_SUFFIX: Record<PullRequestInfo['state'], string> = {
+  open: '',
+  draft: ' (Draft)',
+  merged: '',
+  closed: ' (Closed)',
+};
+
+const PR_STATE_TITLE: Record<PullRequestInfo['state'], string> = {
+  open: 'Open pull request',
+  draft: 'Draft pull request',
+  merged: 'Merged pull request',
+  closed: 'Closed pull request',
+};
+
+export function buildPullRequestLabelViewModel(
+  pullRequest: PullRequestInfo
+): PullRequestLabelViewModel {
+  const isLive = pullRequest.state === 'open' || pullRequest.state === 'draft';
+  const isOutOfSync = isLive && !pullRequest.isInSync;
+  const cssClasses = ['label', 'pr', `state-${pullRequest.state}`];
+  if (isOutOfSync) {
+    cssClasses.push('out-of-sync');
+  }
+
+  const text = `#${pullRequest.number}${PR_STATE_SUFFIX[pullRequest.state]}`;
+  const title = isOutOfSync
+    ? `${PR_STATE_TITLE[pullRequest.state]} — out of sync with local branch`
+    : PR_STATE_TITLE[pullRequest.state];
+
+  return {
+    url: pullRequest.url,
+    text,
+    title,
+    cssClasses,
   };
 }
 

@@ -158,6 +158,19 @@ export class GitClient {
     return stdout.trim();
   }
 
+  async getRemoteUrl(name: string): Promise<string | null> {
+    try {
+      const stdout = await this.run(['config', '--get', `remote.${name}.url`]);
+      return stdout.trim() || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async forcePushBranch(branchRef: string, remote = 'origin'): Promise<void> {
+    await this.run(['push', '--force-with-lease', '--quiet', remote, branchRef]);
+  }
+
   async checkout(ref: string): Promise<void> {
     await this.run(['checkout', '--quiet', ref]);
   }

@@ -6,6 +6,16 @@ export interface Commit {
   parentSha: string;
 }
 
+export type PullRequestState = 'open' | 'draft' | 'merged' | 'closed';
+
+export interface PullRequestInfo {
+  number: number;
+  url: string;
+  state: PullRequestState;
+  // Only meaningful for open/draft; always true for merged/closed.
+  isInSync: boolean;
+}
+
 export interface StackBranch {
   ref: string;
   headSha: string;
@@ -19,6 +29,7 @@ export interface StackBranch {
   isCurrent: boolean;
   worktreePath: string | null;
   worktreePeacockColor: string | null;
+  pullRequest: PullRequestInfo | null;
 }
 
 export interface RebaseIntentNode {
@@ -55,4 +66,5 @@ export type WebviewToHostMessage =
   | { type: 'submitRebaseIntent'; intent: RebaseIntent }
   | { type: 'confirmRebaseIntent' }
   | { type: 'cancelRebaseIntent' }
-  | { type: 'checkoutBranch'; branchRef: string };
+  | { type: 'checkoutBranch'; branchRef: string }
+  | { type: 'forcePushBranch'; branchRef: string };

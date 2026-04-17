@@ -244,6 +244,91 @@ body {
   max-width: 96px;
 }
 
+.pr-group {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.label.pr {
+  background: transparent;
+  border: none;
+  padding: 0 4px;
+  opacity: 0.85;
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+  gap: 4px;
+}
+
+.label.pr:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+.label.pr .label-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.label.pr.state-open {
+  color: var(--vscode-gitDecoration-addedResourceForeground, #3fb950);
+}
+
+.label.pr.state-draft {
+  color: var(--vscode-descriptionForeground, #8b949e);
+}
+
+.label.pr.state-merged {
+  color: var(--vscode-charts-purple, #b392f0);
+}
+
+.label.pr.state-closed {
+  color: var(--vscode-errorForeground, #f85149);
+}
+
+.label.pr.out-of-sync {
+  color: var(--vscode-editorWarning-foreground, #cca700);
+}
+
+.pr-action {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 2px 4px;
+  margin: 0;
+  color: var(--vscode-editorWarning-foreground, #cca700);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.pr-action:hover {
+  background: color-mix(
+    in srgb,
+    var(--vscode-editorWarning-foreground, #cca700) 15%,
+    transparent
+  );
+}
+
+.pr-action:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #007fd4);
+  outline-offset: 1px;
+}
+
+.pr-action:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.pr-action .label-icon {
+  width: 12px;
+  height: 12px;
+}
+
 .label-icon {
   width: 10px;
   height: 10px;

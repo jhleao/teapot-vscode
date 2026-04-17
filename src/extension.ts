@@ -35,6 +35,15 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('teapot.createWorktree', (ctx: { branchRef: string }) => {
       provider.createWorktree(ctx.branchRef);
     }),
+    vscode.commands.registerCommand('teapot.signInToGitHub', () => {
+      provider.signInToGitHub();
+    }),
+    vscode.commands.registerCommand('teapot.gitHubStatus', () => {
+      provider.signInToGitHub();
+    }),
+    vscode.commands.registerCommand('teapot.gitHubStatusUnauthenticated', () => {
+      provider.signInToGitHub();
+    }),
     vscode.commands.registerCommand(
       'teapot.openWorktreeInNewWindow',
       async (ctx: { worktreePath: string }) => {

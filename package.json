@@ -81,14 +81,41 @@
         "command": "teapot.createWorktree",
         "title": "New Worktree Here",
         "category": "Teapot"
+      },
+      {
+        "command": "teapot.signInToGitHub",
+        "title": "Sign in to GitHub",
+        "category": "Teapot"
+      },
+      {
+        "command": "teapot.gitHubStatus",
+        "title": "GitHub: Signed In",
+        "category": "Teapot",
+        "icon": "$(github-inverted)"
+      },
+      {
+        "command": "teapot.gitHubStatusUnauthenticated",
+        "title": "GitHub: Sign In Required",
+        "category": "Teapot",
+        "icon": "$(warning)"
       }
     ],
     "menus": {
       "view/title": [
         {
+          "command": "teapot.gitHubStatus",
+          "when": "view == teapot.stackView && teapot.gitHubSessionValid",
+          "group": "navigation@1"
+        },
+        {
+          "command": "teapot.gitHubStatusUnauthenticated",
+          "when": "view == teapot.stackView && !teapot.gitHubSessionValid",
+          "group": "navigation@1"
+        },
+        {
           "command": "teapot.refresh",
           "when": "view == teapot.stackView",
-          "group": "navigation"
+          "group": "navigation@2"
         }
       ],
       "webview/context": [
@@ -164,6 +191,14 @@
         },
         {
           "command": "teapot.createWorktree",
+          "when": "false"
+        },
+        {
+          "command": "teapot.gitHubStatus",
+          "when": "false"
+        },
+        {
+          "command": "teapot.gitHubStatusUnauthenticated",
           "when": "false"
         }
       ]

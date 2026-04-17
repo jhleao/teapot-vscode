@@ -127,6 +127,7 @@ async function createStackBranch(params: {
     isCurrent: branch.name === currentBranchRef,
     worktreePath,
     worktreePeacockColor,
+    pullRequest: null,
   };
 }
 

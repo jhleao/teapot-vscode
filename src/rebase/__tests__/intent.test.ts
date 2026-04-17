@@ -43,6 +43,7 @@ describe('rebase intent helpers', () => {
       isCurrent: false,
       worktreePath: null,
           worktreePeacockColor: null,
+          pullRequest: null,
     });
 
     expect(createRebaseIntent(state, 'alias', 'm3')).toBeNull();
@@ -85,6 +86,7 @@ function createState(): StackState {
         isCurrent: true,
         worktreePath: null,
           worktreePeacockColor: null,
+          pullRequest: null,
       },
       {
         ref: 'feature',
@@ -102,6 +104,7 @@ function createState(): StackState {
         isCurrent: false,
         worktreePath: null,
           worktreePeacockColor: null,
+          pullRequest: null,
       },
       {
         ref: 'fixup',
@@ -116,6 +119,7 @@ function createState(): StackState {
         isCurrent: false,
         worktreePath: null,
           worktreePeacockColor: null,
+          pullRequest: null,
       },
     ],
     trunk: 'main',
