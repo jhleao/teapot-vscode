@@ -1,15 +1,25 @@
 import * as vscode from 'vscode';
+import { ScmChangesWatcher } from './extension/scmChangesWatcher';
 import { StackViewProvider } from './extension/StackViewProvider';
 
 export function activate(context: vscode.ExtensionContext): void {
   const provider = new StackViewProvider(context);
+  const scmWatcher = new ScmChangesWatcher();
+  void scmWatcher.initialize();
 
   context.subscriptions.push(
     provider,
+    scmWatcher,
     vscode.window.registerWebviewViewProvider('teapot.stackView', provider),
     vscode.commands.registerCommand('teapot.refresh', () => provider.refresh()),
     vscode.commands.registerCommand('teapot.createWorkingCommit', () => {
       provider.createWorkingCommit();
+    }),
+    vscode.commands.registerCommand('teapot.branchAndCommit', () => {
+      provider.branchAndCommit();
+    }),
+    vscode.commands.registerCommand('teapot.amendAndRebase', () => {
+      provider.amendAndRebase();
     }),
     vscode.commands.registerCommand('teapot.copyBranchName', (ctx: { branchRef: string }) => {
       provider.copyBranchName(ctx.branchRef);

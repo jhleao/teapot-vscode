@@ -12,6 +12,7 @@
     "Visualization"
   ],
   "activationEvents": [
+    "onStartupFinished",
     "onView:teapot.stackView",
     "onCommand:teapot.refresh"
   ],
@@ -31,7 +32,7 @@
         {
           "type": "webview",
           "id": "teapot.stackView",
-          "name": "Stack",
+          "name": "Teapot",
           "contextualTitle": "Teapot",
           "retainContextWhenHidden": true
         }
@@ -48,6 +49,16 @@
         "title": "New Working Commit",
         "category": "Teapot",
         "icon": "$(add)"
+      },
+      {
+        "command": "teapot.branchAndCommit",
+        "title": "Teapot: Branch and Commit",
+        "icon": "$(git-branch)"
+      },
+      {
+        "command": "teapot.amendAndRebase",
+        "title": "Teapot: Amend and Rebase Stack",
+        "icon": "$(replace-all)"
       },
       {
         "command": "teapot.copyBranchName",
@@ -113,6 +124,30 @@
       }
     ],
     "menus": {
+      "scm/title": [
+        {
+          "command": "teapot.branchAndCommit",
+          "group": "navigation@1",
+          "when": "scmProvider == git"
+        },
+        {
+          "command": "teapot.amendAndRebase",
+          "group": "navigation@2",
+          "when": "scmProvider == git"
+        }
+      ],
+      "scm/sourceControl": [
+        {
+          "command": "teapot.branchAndCommit",
+          "group": "navigation@1",
+          "when": "scmProvider == git"
+        },
+        {
+          "command": "teapot.amendAndRebase",
+          "group": "navigation@2",
+          "when": "scmProvider == git"
+        }
+      ],
       "view/title": [
         {
           "command": "teapot.createWorkingCommit",

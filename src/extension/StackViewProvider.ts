@@ -7,13 +7,21 @@ import { GitStackStateLoader } from '../git/stackState/loader';
 import { WorktreeNamingUtils } from '../git/worktreeNaming';
 import { GitHubClient } from '../github/githubClient';
 import { GitHubRemoteUtils } from '../github/remote';
-import type { HostToWebviewMessage, RebaseIntent, StackState, WebviewToHostMessage } from '../protocol';
+import type {
+  HostToWebviewMessage,
+  RebaseIntent,
+  RebaseIntentNode,
+  StackBranch,
+  StackState,
+  WebviewToHostMessage,
+} from '../protocol';
 import { GitRebaseExecutor } from '../rebase/executor';
 import { isRebaseIntentValid } from '../rebase/intent';
 import { applyRebaseIntentToState } from '../rebase/project';
 import { GitHubAuthUtils } from '../github/auth';
 import { GitHubPrEnricher } from './githubPrEnricher';
 import { GitRefsWatcher } from './gitWatcher';
+import { ScmGitApiUtils } from './scmGitApi';
 import { renderStackWebviewHtml } from './webviewHtml';
 
 export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -116,6 +124,14 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
   createWorkingCommit(): void {
     this.enqueueOperation(() => this.performCreateWorkingCommit());
+  }
+
+  branchAndCommit(): void {
+    this.enqueueOperation(() => this.performBranchAndCommit());
+  }
+
+  amendAndRebase(): void {
+    this.enqueueOperation(() => this.performAmendAndRebase());
   }
 
   async refresh(): Promise<void> {
@@ -298,6 +314,122 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       return;
     }
     await this.performCheckoutBranch(picked);
+  }
+
+  private async performBranchAndCommit(): Promise<void> {
+    const git = await this.openGit();
+    if (!git) {
+      return;
+    }
+
+    if (!(await git.hasAnyChanges())) {
+      void vscode.window.showInformationMessage('No changes to commit.');
+      return;
+    }
+
+    const message = (await this.readScmInputValue(git.getRepoRoot())).trim();
+    if (!message) {
+      void vscode.window.showErrorMessage(
+        'Enter a commit message in the Source Control input box first.'
+      );
+      return;
+    }
+
+    const existing = new Set((await git.listLocalBranches()).map((b) => b.name));
+    const branchName = await vscode.window.showInputBox({
+      title: 'Branch and Commit',
+      prompt: 'Name for the new branch',
+      validateInput: (value) => {
+        const trimmed = value.trim();
+        if (!trimmed) return 'Branch name cannot be empty';
+        if (/\s/.test(trimmed)) return 'Branch name cannot contain whitespace';
+        if (existing.has(trimmed)) return `A branch named "${trimmed}" already exists`;
+        return null;
+      },
+    });
+
+    if (!branchName) {
+      return;
+    }
+
+    await git.createAndCheckoutBranch(branchName.trim());
+    await git.commitChanges(message);
+    await this.clearScmInputValue(git.getRepoRoot());
+
+    void vscode.commands.executeCommand('git.refresh');
+    await this.refresh();
+  }
+
+  private async performAmendAndRebase(): Promise<void> {
+    const workspaceRoot = this.getWorkspaceRoot();
+    if (!workspaceRoot) {
+      void vscode.window.showErrorMessage('No workspace folder open');
+      return;
+    }
+
+    const git = await GitClient.open(workspaceRoot);
+    if (!git) {
+      void vscode.window.showErrorMessage('Not a git repository');
+      return;
+    }
+
+    if (!(await git.hasAnyChanges())) {
+      void vscode.window.showInformationMessage('No changes to amend.');
+      return;
+    }
+
+    const state = await this.loadGitOnlyState(workspaceRoot);
+    if (state.error) {
+      void vscode.window.showErrorMessage(state.error);
+      return;
+    }
+
+    const currentBranch = state.branches.find((b) => b.isCurrent);
+    if (!currentBranch) {
+      void vscode.window.showErrorMessage(
+        'Cannot amend: HEAD is detached or not on a tracked branch.'
+      );
+      return;
+    }
+
+    const repoRoot = state.repoRoot ?? git.getRepoRoot();
+    const branchesByRef = new Map(state.branches.map((b) => [b.ref, b]));
+    const subtrees: RebaseIntentNode[] = currentBranch.childRefs.map((ref) =>
+      buildIntentNode(branchesByRef, ref)
+    );
+
+    const inputMessage = (await this.readScmInputValue(repoRoot)).trim();
+    await git.amendChanges({ message: inputMessage || undefined });
+    const newHead = await git.revParse('HEAD');
+
+    for (const subtree of subtrees) {
+      const intent: RebaseIntent = {
+        root: subtree,
+        targetBaseSha: newHead,
+        targetBranchRef: null,
+      };
+      await GitRebaseExecutor.execute(repoRoot, intent);
+    }
+
+    await this.clearScmInputValue(repoRoot);
+    void vscode.commands.executeCommand('git.refresh');
+    await this.refresh();
+  }
+
+  private async readScmInputValue(repoRoot: string): Promise<string> {
+    const api = await ScmGitApiUtils.getApi();
+    if (!api) return '';
+    const repo = ScmGitApiUtils.findRepository(api, repoRoot);
+    return repo?.inputBox.value ?? '';
+  }
+
+  private async clearScmInputValue(repoRoot: string): Promise<void> {
+    const api = await ScmGitApiUtils.getApi();
+    if (!api) return;
+    const repo = ScmGitApiUtils.findRepository(api, repoRoot);
+    if (repo) {
+      repo.inputBox.value = '';
+    }
   }
 
   private async performCreateWorkingCommit(): Promise<void> {
@@ -827,6 +959,23 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
 function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function buildIntentNode(
+  branchesByRef: Map<string, StackBranch>,
+  branchRef: string
+): RebaseIntentNode {
+  const branch = branchesByRef.get(branchRef);
+  if (!branch) {
+    throw new Error(`Branch "${branchRef}" not found in stack state.`);
+  }
+  return {
+    branchRef: branch.ref,
+    headSha: branch.headSha,
+    baseSha: branch.baseSha,
+    ownedShas: branch.ownedShas,
+    children: branch.childRefs.map((ref) => buildIntentNode(branchesByRef, ref)),
+  };
 }
 
 async function readExistingEntries(path: string): Promise<Set<string>> {

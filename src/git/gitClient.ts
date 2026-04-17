@@ -191,6 +191,45 @@ export class GitClient {
     await this.run(['commit', '--amend', '-m', message, '--allow-empty']);
   }
 
+  async createAndCheckoutBranch(name: string): Promise<void> {
+    await this.run(['checkout', '-b', name]);
+  }
+
+  async hasStagedChanges(): Promise<boolean> {
+    try {
+      await this.run(['diff', '--cached', '--quiet']);
+      return false;
+    } catch {
+      return true;
+    }
+  }
+
+  async hasAnyChanges(): Promise<boolean> {
+    const stdout = await this.run(['status', '--porcelain']);
+    return stdout.trim().length > 0;
+  }
+
+  async commitChanges(message: string): Promise<void> {
+    const args = ['commit', '-m', message];
+    if (!(await this.hasStagedChanges())) {
+      args.splice(1, 0, '-a');
+    }
+    await this.run(args);
+  }
+
+  async amendChanges(options: { message?: string } = {}): Promise<void> {
+    const args = ['commit', '--amend'];
+    if (!(await this.hasStagedChanges())) {
+      args.push('-a');
+    }
+    if (options.message) {
+      args.push('-m', options.message);
+    } else {
+      args.push('--no-edit');
+    }
+    await this.run(args);
+  }
+
   async createEmptyCommitOnTop(parentRef: string, message: string): Promise<string> {
     const stdout = await this.run([
       'commit-tree',
