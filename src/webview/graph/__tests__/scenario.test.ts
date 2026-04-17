@@ -253,4 +253,242 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
     const jHeader = rows.find((r) => r.kind === 'branch-header' && r.branchName === 'J');
     expect(jHeader).toBeUndefined();
   });
+
+  // Two sibling branches with different head commits (no shared trailing
+  // ancestors) both sitting on the tip of a non-trunk parent. Without the
+  // spin-off cascade they would both render on the parent's lane and look
+  // like a single linear stack. One must reattach as a spin-off so the two
+  // siblings read as diverging branches.
+  it('reattaches siblings of a non-trunk parent as spin-offs even when they share no commits', () => {
+    const state: StackState = {
+      branches: [
+        {
+          ref: 'main',
+          headSha: 'm1',
+          baseSha: 'm1',
+          parentRef: null,
+          childRefs: ['laks'],
+          commits: [{ sha: 'm1', message: 'reset repo', author: 'dev', timeMs: 1, parentSha: '' }],
+          isTrunk: true, isRemote: false, isCurrent: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null,
+        },
+        {
+          ref: 'laks',
+          headSha: 'laks_c',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: ['qowi', 'toucan-b034'],
+          commits: [{ sha: 'laks_c', message: 'laks', author: 'dev', timeMs: 100, parentSha: 'm1' }],
+          isTrunk: false, isRemote: false, isCurrent: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null,
+        },
+        {
+          ref: 'qowi',
+          headSha: 'qowi_c',
+          baseSha: 'laks_c',
+          parentRef: 'laks',
+          childRefs: [],
+          commits: [{ sha: 'qowi_c', message: 'qowi', author: 'dev', timeMs: 200, parentSha: 'laks_c' }],
+          isTrunk: false, isRemote: false, isCurrent: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null,
+        },
+        {
+          ref: 'toucan-b034',
+          headSha: 'toucan_c',
+          baseSha: 'laks_c',
+          parentRef: 'laks',
+          childRefs: [],
+          commits: [{ sha: 'toucan_c', message: 'wip', author: 'dev', timeMs: 900, parentSha: 'laks_c' }],
+          isTrunk: false, isRemote: false, isCurrent: true,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null,
+        },
+      ],
+      trunk: 'main',
+      current: 'toucan-b034',
+      repoRoot: '/repo',
+      error: null,
+      pendingRebase: null,
+      activeRebase: null,
+    };
+
+    const rows = layoutRows(state);
+    const laneByTip = Object.fromEntries(
+      rows
+        .filter((r) => r.kind === 'commit' && r.isBranchTip)
+        .map((r) => [r.branchName, r.lane])
+    );
+
+    // qowi is the older sibling → primary, stays on laks's spine at lane 1.
+    expect(laneByTip['laks']).toBe(1);
+    expect(laneByTip['qowi']).toBe(1);
+    // toucan-b034 reattaches as a spin-off at lane 2 with its own curve back.
+    expect(laneByTip['toucan-b034']).toBe(2);
+
+    const toucanHeader = rows.find(
+      (r) => r.kind === 'branch-header' && r.branchName === 'toucan-b034'
+    );
+    expect(toucanHeader).toMatchObject({ lane: 2, parentLane: 1 });
+  });
+
+  // A non-spinoff sibling of a subtree that has its own spinoff cascade should
+  // render ABOVE that subtree — not sandwiched between the primary and the
+  // shared parent. Here ioqw is a plain peer of laks under main (trunk), and
+  // laks hosts a qowi→octopus spin-off pair. Desired top-to-bottom:
+  //   ioqw → octopus → qowi → laks → main.
+  it('places non-spinoff peers above siblings whose subtree has spin-offs', () => {
+    const state: StackState = {
+      branches: [
+        {
+          ref: 'main',
+          headSha: 'm1',
+          baseSha: 'm1',
+          parentRef: null,
+          childRefs: ['laks', 'ioqw'],
+          commits: [{ sha: 'm1', message: 'reset', author: 'dev', timeMs: 1, parentSha: '' }],
+          isTrunk: true, isRemote: false, isCurrent: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null,
+        },
+        {
+          ref: 'laks',
+          headSha: 'laks_c',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: ['qowi', 'octopus-8434'],
+          commits: [{ sha: 'laks_c', message: 'laks', author: 'dev', timeMs: 100, parentSha: 'm1' }],
+          isTrunk: false, isRemote: false, isCurrent: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null,
+        },
+        {
+          ref: 'ioqw',
+          headSha: 'ioqw_c',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: [],
+          commits: [{ sha: 'ioqw_c', message: 'ioqw', author: 'dev', timeMs: 121, parentSha: 'm1' }],
+          isTrunk: false, isRemote: false, isCurrent: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null,
+        },
+        {
+          ref: 'qowi',
+          headSha: 'qowi_c',
+          baseSha: 'laks_c',
+          parentRef: 'laks',
+          childRefs: [],
+          commits: [{ sha: 'qowi_c', message: 'qowi', author: 'dev', timeMs: 200, parentSha: 'laks_c' }],
+          isTrunk: false, isRemote: false, isCurrent: true,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null,
+        },
+        {
+          ref: 'octopus-8434',
+          headSha: 'octo_c',
+          baseSha: 'laks_c',
+          parentRef: 'laks',
+          childRefs: [],
+          commits: [{ sha: 'octo_c', message: 'wip', author: 'dev', timeMs: 900, parentSha: 'laks_c' }],
+          isTrunk: false, isRemote: false, isCurrent: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null,
+        },
+      ],
+      trunk: 'main',
+      current: 'qowi',
+      repoRoot: '/repo',
+      error: null,
+      pendingRebase: null,
+      activeRebase: null,
+    };
+
+    const rows = layoutRows(state);
+    const tipOrder = rows
+      .filter((r) => r.kind === 'commit' && r.isBranchTip)
+      .map((r) => r.branchName);
+
+    expect(tipOrder).toEqual(['ioqw', 'qowi', 'octopus-8434', 'laks', 'main']);
+  });
+
+  // Real git-test topology: ioqw, qowi, and octopus-8434 are all children of
+  // laks (three siblings under the same non-trunk parent, no shared commits).
+  // Primary (oldest) is ioqw — stays on laks's spine. qowi and octopus-8434
+  // render as co-located spin-offs on the next lane, below the primary and
+  // above laks in the display. Desired order: ioqw → qowi → octopus → laks.
+  it('renders co-located spin-offs below their primary and above the shared parent', () => {
+    const state: StackState = {
+      branches: [
+        {
+          ref: 'main',
+          headSha: 'm1',
+          baseSha: 'm1',
+          parentRef: null,
+          childRefs: ['laks'],
+          commits: [{ sha: 'm1', message: 'reset', author: 'dev', timeMs: 1, parentSha: '' }],
+          isTrunk: true, isRemote: false, isCurrent: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null,
+        },
+        {
+          ref: 'laks',
+          headSha: 'laks_c',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: ['ioqw', 'qowi', 'octopus-8434'],
+          commits: [{ sha: 'laks_c', message: 'laks', author: 'dev', timeMs: 100, parentSha: 'm1' }],
+          isTrunk: false, isRemote: false, isCurrent: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null,
+        },
+        {
+          ref: 'ioqw',
+          headSha: 'ioqw_c',
+          baseSha: 'laks_c',
+          parentRef: 'laks',
+          childRefs: [],
+          commits: [{ sha: 'ioqw_c', message: 'ioqw', author: 'dev', timeMs: 150, parentSha: 'laks_c' }],
+          isTrunk: false, isRemote: false, isCurrent: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null,
+        },
+        {
+          ref: 'qowi',
+          headSha: 'qowi_c',
+          baseSha: 'laks_c',
+          parentRef: 'laks',
+          childRefs: [],
+          commits: [{ sha: 'qowi_c', message: 'qowi', author: 'dev', timeMs: 400, parentSha: 'laks_c' }],
+          isTrunk: false, isRemote: false, isCurrent: true,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null,
+        },
+        {
+          ref: 'octopus-8434',
+          headSha: 'octo_c',
+          baseSha: 'laks_c',
+          parentRef: 'laks',
+          childRefs: [],
+          commits: [{ sha: 'octo_c', message: 'wip', author: 'dev', timeMs: 900, parentSha: 'laks_c' }],
+          isTrunk: false, isRemote: false, isCurrent: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null,
+        },
+      ],
+      trunk: 'main',
+      current: 'qowi',
+      repoRoot: '/repo',
+      error: null,
+      pendingRebase: null,
+      activeRebase: null,
+    };
+
+    const rows = layoutRows(state);
+    const tipOrder = rows
+      .filter((r) => r.kind === 'commit' && r.isBranchTip)
+      .map((r) => r.branchName);
+
+    expect(tipOrder).toEqual(['ioqw', 'qowi', 'octopus-8434', 'laks', 'main']);
+
+    const laneByTip = Object.fromEntries(
+      rows
+        .filter((r) => r.kind === 'commit' && r.isBranchTip)
+        .map((r) => [r.branchName, r.lane])
+    );
+    // Primary ioqw inherits laks's lane (continuation). Victims qowi and
+    // octopus-8434 take the next lane as spin-offs. laks stays on lane 1.
+    expect(laneByTip['ioqw']).toBe(1);
+    expect(laneByTip['qowi']).toBe(2);
+    expect(laneByTip['octopus-8434']).toBe(2);
+    expect(laneByTip['laks']).toBe(1);
+  });
 });

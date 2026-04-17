@@ -24,7 +24,15 @@ interface LayoutContext {
   // as spin-offs of one chosen "primary" sibling. Each non-primary gets its
   // own lane (primary lane + 1) and its own branch-header curve back to the
   // primary's lane — mirroring how original Teapot nests co-located spinoffs.
+  //
+  // reattachedSpinoffs is for siblings that share trailing commits with the
+  // primary: they reroute their parent to the primary's divergence commit
+  // and drop the shared commits. coLocatedSpinoffPrimaries is for siblings
+  // that share no commits (just the same parent tip): they stay as children
+  // of the real parent in childRefsByParentAndBase, but take primaryLane+1
+  // for their own lane, rendering as peers-to-the-side of the primary.
   reattachedSpinoffs: Map<string, SpinoffAttachment>;
+  coLocatedSpinoffPrimaries: Map<string, string>;
   // Trailing ancestor commits that siblings share with the primary
   // (branchless commits between the divergence point and the shared base).
   // These get filtered out of the non-primary branches so the branchless
@@ -228,11 +236,73 @@ export function layoutRows(state: StackState): RowModel[] {
 function sortChildRefs(
   childRefs: string[],
   branchesByRef: Map<string, StackBranch>,
-  commitTimesBySha: ReadonlyMap<string, number>
+  commitTimesBySha: ReadonlyMap<string, number>,
+  spinoffHostAncestors?: ReadonlySet<string>,
+  coLocatedSpinoffPrimaries?: ReadonlyMap<string, string>
 ): string[] {
-  return [...childRefs].sort((left, right) =>
-    compareBranchRefsForLayout(left, right, branchesByRef, commitTimesBySha)
-  );
+  // Members of a co-located spin-off group (primary + victims): primary
+  // emits first, then victims in ascending time order (oldest victim right
+  // below the primary, newest last). This mirrors teapot's tip-up stack,
+  // where the continuation sits at the base and spin-offs fan out above.
+  const coLocatedMembers = new Set<string>();
+  if (coLocatedSpinoffPrimaries) {
+    for (const [victim, primary] of coLocatedSpinoffPrimaries) {
+      coLocatedMembers.add(victim);
+      coLocatedMembers.add(primary);
+    }
+  }
+
+  return [...childRefs].sort((left, right) => {
+    const leftInGroup = coLocatedMembers.has(left);
+    const rightInGroup = coLocatedMembers.has(right);
+
+    if (leftInGroup && rightInGroup) {
+      const leftBranch = branchesByRef.get(left);
+      const rightBranch = branchesByRef.get(right);
+      const timeOrder =
+        getBranchHeadTime(leftBranch, commitTimesBySha) -
+        getBranchHeadTime(rightBranch, commitTimesBySha);
+      if (timeOrder !== 0) return timeOrder;
+      return left.localeCompare(right);
+    }
+
+    if (spinoffHostAncestors) {
+      const leftHosts = spinoffHostAncestors.has(left) ? 1 : 0;
+      const rightHosts = spinoffHostAncestors.has(right) ? 1 : 0;
+      if (leftHosts !== rightHosts) {
+        return leftHosts - rightHosts;
+      }
+    }
+    return compareBranchRefsForLayout(left, right, branchesByRef, commitTimesBySha);
+  });
+}
+
+// Every branch that has a reattached spin-off in its subtree — the primary
+// itself plus every ancestor up to the root. Used to push those branches to
+// the end of their sibling list so the spin-off cascade renders below any
+// plain peers.
+function collectSpinoffHostAncestors(
+  branchesByRef: ReadonlyMap<string, StackBranch>,
+  reattachedSpinoffs: ReadonlyMap<string, SpinoffAttachment>,
+  coLocatedSpinoffPrimaries: ReadonlyMap<string, string>
+): Set<string> {
+  const hosts = new Set<string>();
+  const primaryRefs: string[] = [
+    ...[...reattachedSpinoffs.values()].map((v) => v.primaryRef),
+    ...coLocatedSpinoffPrimaries.values(),
+  ];
+  for (const primaryRef of primaryRefs) {
+    // The primary itself is a "host" in the sibling-group sense, but we want
+    // it emitted FIRST at its own parent's commit so its spin-offs render
+    // below it. Only ancestors of the primary (laks, main, …) get flagged
+    // for the "spinoff-heavy subtree goes last" sort.
+    let current: string | null = branchesByRef.get(primaryRef)?.parentRef ?? null;
+    while (current && !hosts.has(current)) {
+      hosts.add(current);
+      current = branchesByRef.get(current)?.parentRef ?? null;
+    }
+  }
+  return hosts;
 }
 
 function createLayoutContext(branches: StackBranch[]): LayoutContext {
@@ -240,20 +310,28 @@ function createLayoutContext(branches: StackBranch[]): LayoutContext {
   const commitTimesBySha = commitTimesByShaIndex(branches);
   const { additionalRefsByPrimary, collapsedBranchRefs, primaryByCollapsed } =
     planSameShaCollapse(branches);
-  const { reattachedSpinoffs, droppedCommitShasByBranch } = planSiblingSpinoffs(
-    branches,
+  const { reattachedSpinoffs, coLocatedSpinoffPrimaries, droppedCommitShasByBranch } =
+    planSiblingSpinoffs(branches, branchesByRef, commitTimesBySha, collapsedBranchRefs);
+  const spinoffHostAncestors = collectSpinoffHostAncestors(
     branchesByRef,
-    commitTimesBySha,
-    collapsedBranchRefs
+    reattachedSpinoffs,
+    coLocatedSpinoffPrimaries
   );
   const childRefsByParentAndBase = childRefsByParentAndBaseIndex(
     branches,
     branchesByRef,
     commitTimesBySha,
     primaryByCollapsed,
-    reattachedSpinoffs
+    reattachedSpinoffs,
+    coLocatedSpinoffPrimaries,
+    spinoffHostAncestors
   );
-  const laneByRef = computeLaneByRef(branches, branchesByRef, reattachedSpinoffs);
+  const laneByRef = computeLaneByRef(
+    branches,
+    branchesByRef,
+    reattachedSpinoffs,
+    coLocatedSpinoffPrimaries
+  );
 
   return {
     branchesByRef,
@@ -263,6 +341,7 @@ function createLayoutContext(branches: StackBranch[]): LayoutContext {
     collapsedBranchRefs,
     primaryByCollapsed,
     reattachedSpinoffs,
+    coLocatedSpinoffPrimaries,
     droppedCommitShasByBranch,
     laneByRef,
   };
@@ -292,9 +371,11 @@ function planSiblingSpinoffs(
   collapsedBranchRefs: ReadonlySet<string>
 ): {
   reattachedSpinoffs: Map<string, SpinoffAttachment>;
+  coLocatedSpinoffPrimaries: Map<string, string>;
   droppedCommitShasByBranch: Map<string, Set<string>>;
 } {
   const reattachedSpinoffs = new Map<string, SpinoffAttachment>();
+  const coLocatedSpinoffPrimaries = new Map<string, string>();
   const droppedCommitShasByBranch = new Map<string, Set<string>>();
 
   const groupsByParentBase = new Map<string, StackBranch[]>();
@@ -321,10 +402,15 @@ function planSiblingSpinoffs(
     if (!primary) continue;
 
     // Per-sibling: count trailing commits that this non-primary shares with
-    // the primary, walking both from the tail (oldest-first). A sibling only
-    // becomes a spin-off if it shares at least one ancestor commit with the
-    // primary — otherwise it stays as an independent peer under the real
-    // parent (e.g. `laks` and `ioqw` alongside `branch2` under `main`).
+    // the primary, walking both from the tail (oldest-first). When they share
+    // commits, the spin-off attaches at the divergence point and the shared
+    // commits get dropped so they render once on the primary's spine. When
+    // they share none, the spin-off still reattaches at the primary's oldest
+    // commit so their relationship reads as a cascade — unless the parent is
+    // trunk, where independent peers each draw their own curve back to lane 0
+    // and the cascade would hide that peer structure.
+    const parentIsTrunk = branchesByRef.get(primary.parentRef ?? '')?.isTrunk ?? false;
+
     for (const branch of group) {
       if (branch.ref === primaryRef) continue;
 
@@ -337,21 +423,26 @@ function planSiblingSpinoffs(
         sharedLength += 1;
       }
 
-      if (sharedLength === 0) continue;
-
-      const sharedShaSet = new Set<string>();
-      for (let i = 0; i < sharedLength; i += 1) {
-        sharedShaSet.add(primary.commits[primary.commits.length - 1 - i].sha);
+      if (sharedLength > 0) {
+        const sharedShaSet = new Set<string>();
+        for (let i = 0; i < sharedLength; i += 1) {
+          sharedShaSet.add(primary.commits[primary.commits.length - 1 - i].sha);
+        }
+        const attachSha = primary.commits[primary.commits.length - sharedLength].sha;
+        reattachedSpinoffs.set(branch.ref, { primaryRef, attachSha });
+        droppedCommitShasByBranch.set(branch.ref, sharedShaSet);
+      } else {
+        if (parentIsTrunk) continue;
+        // Co-located spin-off: same parent tip, no shared history. Stay as a
+        // child of the real parent (so the sort can emit primary → spinoffs
+        // top-down under the shared parent's tip row); only the lane is
+        // lifted to primaryLane+1 so the spin-off renders to the side.
+        coLocatedSpinoffPrimaries.set(branch.ref, primaryRef);
       }
-      // Topmost shared commit (closest to tips) = the divergence point.
-      const attachSha = primary.commits[primary.commits.length - sharedLength].sha;
-
-      reattachedSpinoffs.set(branch.ref, { primaryRef, attachSha });
-      droppedCommitShasByBranch.set(branch.ref, sharedShaSet);
     }
   }
 
-  return { reattachedSpinoffs, droppedCommitShasByBranch };
+  return { reattachedSpinoffs, coLocatedSpinoffPrimaries, droppedCommitShasByBranch };
 }
 
 // Trunk → 0. Natural non-trunk branches → 1. Reattached spin-off siblings →
@@ -359,7 +450,8 @@ function planSiblingSpinoffs(
 function computeLaneByRef(
   branches: StackBranch[],
   branchesByRef: Map<string, StackBranch>,
-  reattachedSpinoffs: ReadonlyMap<string, SpinoffAttachment>
+  reattachedSpinoffs: ReadonlyMap<string, SpinoffAttachment>,
+  coLocatedSpinoffPrimaries: ReadonlyMap<string, string>
 ): Map<string, number> {
   const laneByRef = new Map<string, number>();
   const visiting = new Set<string>();
@@ -379,8 +471,11 @@ function computeLaneByRef(
       lane = 0;
     } else {
       const attachment = reattachedSpinoffs.get(ref);
+      const coLocatedPrimary = coLocatedSpinoffPrimaries.get(ref);
       if (attachment) {
         lane = resolve(attachment.primaryRef) + 1;
+      } else if (coLocatedPrimary) {
+        lane = resolve(coLocatedPrimary) + 1;
       } else if (branch.parentRef) {
         // Non-reattached, non-trunk descendants stay on the same spine as
         // their parent. Without this, a child of a spin-off (e.g. jhleao
@@ -485,7 +580,9 @@ function childRefsByParentAndBaseIndex(
   branchesByRef: Map<string, StackBranch>,
   commitTimesBySha: ReadonlyMap<string, number>,
   primaryByCollapsed: ReadonlyMap<string, string>,
-  reattachedSpinoffs: ReadonlyMap<string, SpinoffAttachment>
+  reattachedSpinoffs: ReadonlyMap<string, SpinoffAttachment>,
+  coLocatedSpinoffPrimaries: ReadonlyMap<string, string>,
+  spinoffHostAncestors: ReadonlySet<string>
 ): Map<string, ChildRefsByBaseSha> {
   const childRefsByParentAndBase = new Map<string, ChildRefsByBaseSha>();
 
@@ -523,7 +620,13 @@ function childRefsByParentAndBaseIndex(
     for (const [baseSha, childRefs] of childRefsByBaseSha) {
       childRefsByBaseSha.set(
         baseSha,
-        sortChildRefs(childRefs, branchesByRef, commitTimesBySha)
+        sortChildRefs(
+          childRefs,
+          branchesByRef,
+          commitTimesBySha,
+          spinoffHostAncestors,
+          coLocatedSpinoffPrimaries
+        )
       );
     }
   }
