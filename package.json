@@ -43,6 +43,12 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "teapot.createWorkingCommit",
+        "title": "New Working Commit",
+        "category": "Teapot",
+        "icon": "$(add)"
+      },
+      {
         "command": "teapot.copyBranchName",
         "title": "Copy Branch Name",
         "category": "Teapot"
@@ -107,6 +113,11 @@
     ],
     "menus": {
       "view/title": [
+        {
+          "command": "teapot.createWorkingCommit",
+          "when": "view == teapot.stackView",
+          "group": "navigation@0"
+        },
         {
           "command": "teapot.gitHubStatus",
           "when": "view == teapot.stackView && teapot.gitHubSessionValid",

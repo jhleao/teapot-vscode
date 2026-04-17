@@ -108,6 +108,10 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     this.enqueueOperation(() => this.performSignInToGitHub());
   }
 
+  createWorkingCommit(): void {
+    this.enqueueOperation(() => this.performCreateWorkingCommit());
+  }
+
   async refresh(): Promise<void> {
     this.refreshPending = true;
     if (this.refreshTask) {
@@ -264,6 +268,35 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       return;
     }
     await git.checkout(branchRef);
+    void vscode.commands.executeCommand('git.refresh');
+    await this.refresh();
+  }
+
+  private async performCreateWorkingCommit(): Promise<void> {
+    const git = await this.openGit();
+    if (!git) {
+      return;
+    }
+
+    const currentBranch = await git.getCurrentBranch();
+    if (!currentBranch) {
+      void vscode.window.showErrorMessage(
+        'Cannot create a working commit from a detached HEAD.'
+      );
+      return;
+    }
+
+    const existing = new Set((await git.listLocalBranches()).map((b) => b.name));
+    let n = 1;
+    while (existing.has(`wip-${n}`)) {
+      n++;
+    }
+    const branchName = `wip-${n}`;
+
+    const newSha = await git.createEmptyCommitOnTop('HEAD', 'chore: wip');
+    await git.createBranchAt(branchName, newSha);
+    await git.checkout(branchName);
+
     void vscode.commands.executeCommand('git.refresh');
     await this.refresh();
   }

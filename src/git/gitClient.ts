@@ -191,6 +191,18 @@ export class GitClient {
     await this.run(['commit', '--amend', '-m', message, '--allow-empty']);
   }
 
+  async createEmptyCommitOnTop(parentRef: string, message: string): Promise<string> {
+    const stdout = await this.run([
+      'commit-tree',
+      `${parentRef}^{tree}`,
+      '-p',
+      parentRef,
+      '-m',
+      message,
+    ]);
+    return stdout.trim();
+  }
+
   async removeWorktree(path: string, options: { force?: boolean } = {}): Promise<void> {
     const args = ['worktree', 'remove'];
     if (options.force) {
