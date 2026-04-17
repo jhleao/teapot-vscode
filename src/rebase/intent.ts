@@ -3,7 +3,7 @@ import type { RebaseIntent, RebaseIntentNode, StackBranch, StackState } from '..
 interface BranchLookupIndex {
   branchByRef: Map<string, StackBranch>;
   branchRefsByHeadSha: Map<string, string[]>;
-  branchRefsByOwnedSha: Map<string, string[]>;
+  branchRefsByLaneSha: Map<string, string[]>;
   branchRefsByRelevantSha: Map<string, string[]>;
 }
 
@@ -47,16 +47,14 @@ export function collectIntentBranchRefs(node: RebaseIntentNode): Set<string> {
 }
 
 export function collectPromptingShas(intent: RebaseIntent): Set<string> {
-  return new Set(intent.root.ownedShas);
+  return new Set([intent.root.headSha]);
 }
 
 export function collectIdleShas(intent: RebaseIntent): Set<string> {
   const idleShas = new Set<string>();
   for (const child of intent.root.children) {
     visitIntentNodes(child, (node) => {
-      for (const sha of node.ownedShas) {
-        idleShas.add(sha);
-      }
+      idleShas.add(node.headSha);
     });
   }
   return idleShas;
@@ -188,7 +186,6 @@ function buildIntentNode(
     branchRef: branch.ref,
     headSha: branch.headSha,
     baseSha: branch.baseSha,
-    ownedShas: [...branch.ownedShas],
     children,
   };
 }
@@ -233,7 +230,7 @@ function isCommitInBranchSet(
 function createBranchLookupIndex(branches: StackBranch[]): BranchLookupIndex {
   const branchByRef = indexBranchesByRef(branches);
   const branchRefsByHeadSha = new Map<string, string[]>();
-  const branchRefsByOwnedSha = new Map<string, string[]>();
+  const branchRefsByLaneSha = new Map<string, string[]>();
   const branchRefsByRelevantSha = new Map<string, string[]>();
 
   for (const branch of branches) {
@@ -241,9 +238,9 @@ function createBranchLookupIndex(branches: StackBranch[]): BranchLookupIndex {
     pushIndexedBranchRef(branchRefsByRelevantSha, branch.headSha, branch.ref);
     pushIndexedBranchRef(branchRefsByRelevantSha, branch.baseSha, branch.ref);
 
-    for (const ownedSha of branch.ownedShas) {
-      pushIndexedBranchRef(branchRefsByOwnedSha, ownedSha, branch.ref);
-      pushIndexedBranchRef(branchRefsByRelevantSha, ownedSha, branch.ref);
+    for (const commit of branch.commits) {
+      pushIndexedBranchRef(branchRefsByLaneSha, commit.sha, branch.ref);
+      pushIndexedBranchRef(branchRefsByRelevantSha, commit.sha, branch.ref);
     }
   }
 
@@ -251,13 +248,13 @@ function createBranchLookupIndex(branches: StackBranch[]): BranchLookupIndex {
   // visible trunk row always resolves to trunk rather than a sibling branch
   // that happens to be stuck at the same commit.
   sortIndexPreferringTrunk(branchRefsByHeadSha, branchByRef);
-  sortIndexPreferringTrunk(branchRefsByOwnedSha, branchByRef);
+  sortIndexPreferringTrunk(branchRefsByLaneSha, branchByRef);
   sortIndexPreferringTrunk(branchRefsByRelevantSha, branchByRef);
 
   return {
     branchByRef,
     branchRefsByHeadSha,
-    branchRefsByOwnedSha,
+    branchRefsByLaneSha,
     branchRefsByRelevantSha,
   };
 }
@@ -281,7 +278,7 @@ function createRebaseIntentContext(
 ): RebaseIntentContext | null {
   const branchLookup = createBranchLookupIndex(state.branches);
   const sourceBranch = branchLookup.branchByRef.get(branchRef);
-  if (!sourceBranch || sourceBranch.ownedShas.length === 0) {
+  if (!sourceBranch || sourceBranch.headSha === sourceBranch.baseSha) {
     return null;
   }
 
@@ -306,7 +303,7 @@ function findOwningBranchRefInLookup(
   }
 
   return (
-    firstIncludedBranchRef(branchLookup.branchRefsByOwnedSha.get(targetBaseSha), excludedBranchRefs) ??
+    firstIncludedBranchRef(branchLookup.branchRefsByLaneSha.get(targetBaseSha), excludedBranchRefs) ??
     null
   );
 }

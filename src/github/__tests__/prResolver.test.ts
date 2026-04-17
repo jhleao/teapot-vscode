@@ -10,7 +10,6 @@ function createBranch(overrides: Partial<StackBranch>): StackBranch {
     baseSha: 'def456',
     parentRef: null,
     childRefs: [],
-    ownedShas: [],
     commits: [],
     isTrunk: false,
     isRemote: false,

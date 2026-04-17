@@ -974,7 +974,6 @@ function buildIntentNode(
     branchRef: branch.ref,
     headSha: branch.headSha,
     baseSha: branch.baseSha,
-    ownedShas: branch.ownedShas,
     children: branch.childRefs.map((ref) => buildIntentNode(branchesByRef, ref)),
   };
 }

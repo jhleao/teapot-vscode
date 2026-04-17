@@ -22,29 +22,19 @@ async function executeIntentNode(
   node: RebaseIntentNode,
   targetBaseSha: string
 ): Promise<Map<string, string>> {
-  const oldOwnedOldestFirst = [...node.ownedShas].reverse();
-
+  // Replay only the branch's head commit onto the new base. Earlier commits
+  // along the branch belong to ancestor branches (or reflog) and stay put.
   await git.rebaseBranchOnto({
     branchRef: node.branchRef,
-    upstreamSha: node.baseSha,
+    upstreamSha: `${node.headSha}^`,
     targetBaseSha,
   });
 
   const rebasedHeadSha = await git.revParse(node.branchRef);
-  // Rebase preserves commit order on the first-parent chain, which lets us map
-  // each original owned commit to its rewritten counterpart by position.
-  const rebasedOwnedNewestFirst = await git.getCommitShas({
-    fromRef: targetBaseSha,
-    toRef: rebasedHeadSha,
-    limit: Math.max(oldOwnedOldestFirst.length, 1) + 32,
-  });
-  const rebasedOwnedOldestFirst = [...rebasedOwnedNewestFirst].reverse();
-  const rewrittenShasByOriginal = createRewriteMap(oldOwnedOldestFirst, rebasedOwnedOldestFirst);
+  const rewrittenShasByOriginal = new Map<string, string>([[node.headSha, rebasedHeadSha]]);
 
   for (const child of node.children) {
-    const childTargetBaseSha =
-      rewrittenShasByOriginal.get(child.baseSha) ??
-      (child.baseSha === node.headSha ? rebasedHeadSha : null);
+    const childTargetBaseSha = rewrittenShasByOriginal.get(child.baseSha);
     if (!childTargetBaseSha) {
       throw new Error(
         `Unable to map rebased base for ${child.branchRef}. ` +
@@ -53,29 +43,6 @@ async function executeIntentNode(
     }
 
     await executeIntentNode(git, child, childTargetBaseSha);
-  }
-
-  return rewrittenShasByOriginal;
-}
-
-function createRewriteMap(
-  originalOwnedOldestFirst: string[],
-  rebasedOwnedOldestFirst: string[]
-): Map<string, string> {
-  if (originalOwnedOldestFirst.length !== rebasedOwnedOldestFirst.length) {
-    throw new Error(
-      `Rebase changed commit count from ${originalOwnedOldestFirst.length} ` +
-        `to ${rebasedOwnedOldestFirst.length}.`
-    );
-  }
-
-  const rewrittenShasByOriginal = new Map<string, string>();
-  for (const [index, originalSha] of originalOwnedOldestFirst.entries()) {
-    const rebasedSha = rebasedOwnedOldestFirst[index];
-    if (!rebasedSha) {
-      throw new Error(`Missing rebased SHA for ${originalSha.slice(0, 7)}.`);
-    }
-    rewrittenShasByOriginal.set(originalSha, rebasedSha);
   }
 
   return rewrittenShasByOriginal;

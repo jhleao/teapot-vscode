@@ -39,7 +39,6 @@ describe('dragAndDrop helpers', () => {
           baseSha: 'm2',
           parentRef: null,
           childRefs: ['feature'],
-          ownedShas: ['m2', 'm1'],
           commits: [
             { sha: 'm2', message: 'main 2', author: 'dev', timeMs: 2, parentSha: 'm1' },
             { sha: 'm1', message: 'main 1', author: 'dev', timeMs: 1, parentSha: '' },
@@ -57,7 +56,6 @@ describe('dragAndDrop helpers', () => {
           baseSha: 'm1',
           parentRef: 'main',
           childRefs: ['fixup'],
-          ownedShas: ['f1'],
           commits: [{ sha: 'f1', message: 'feature', author: 'dev', timeMs: 3, parentSha: 'm1' }],
           isTrunk: false,
           isRemote: false,
@@ -72,7 +70,6 @@ describe('dragAndDrop helpers', () => {
           baseSha: 'f1',
           parentRef: 'feature',
           childRefs: [],
-          ownedShas: ['x1'],
           commits: [{ sha: 'x1', message: 'fixup', author: 'dev', timeMs: 4, parentSha: 'f1' }],
           isTrunk: false,
           isRemote: false,

@@ -22,7 +22,6 @@ export interface StackBranch {
   baseSha: string;
   parentRef: string | null;
   childRefs: string[];
-  ownedShas: string[];
   commits: Commit[];
   isTrunk: boolean;
   isRemote: boolean;
@@ -36,7 +35,6 @@ export interface RebaseIntentNode {
   branchRef: string;
   headSha: string;
   baseSha: string;
-  ownedShas: string[];
   children: RebaseIntentNode[];
 }
 

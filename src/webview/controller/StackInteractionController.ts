@@ -472,7 +472,6 @@ function areIntentNodesEqual(
     left.branchRef !== right.branchRef ||
     left.headSha !== right.headSha ||
     left.baseSha !== right.baseSha ||
-    !areStringArraysEqual(left.ownedShas, right.ownedShas) ||
     left.children.length !== right.children.length
   ) {
     return false;
@@ -539,7 +538,6 @@ function areBranchesVisuallyEqual(
     left.worktreePath === right.worktreePath &&
     left.worktreePeacockColor === right.worktreePeacockColor &&
     areStringArraysEqual(left.childRefs, right.childRefs) &&
-    areStringArraysEqual(left.ownedShas, right.ownedShas) &&
     areCommitsEqual(left.commits, right.commits) &&
     arePullRequestsEqual(left.pullRequest, right.pullRequest)
   );

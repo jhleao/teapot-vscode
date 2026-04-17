@@ -110,7 +110,7 @@ export function layoutRows(state: StackState): RowModel[] {
         hasBottom: willRenderBranchHeader || !!branch.parentRef,
         rebaseStatus: getRebaseStatus(branch.headSha, promptingShas, idleShas),
         showsRebaseActions: actionCommitSha === branch.headSha,
-        isDraggable: !branch.isTrunk && branch.ownedShas.length > 0,
+        isDraggable: !branch.isTrunk && branch.headSha !== branch.baseSha,
         worktreePath: branch.worktreePath,
         worktreePeacockColor: branch.worktreePeacockColor,
         pullRequest: branch.pullRequest,
@@ -146,7 +146,7 @@ export function layoutRows(state: StackState): RowModel[] {
         hasBottom: isLastCommit ? willRenderBranchHeader || !!branch.parentRef : true,
         rebaseStatus: getRebaseStatus(commit.sha, promptingShas, idleShas),
         showsRebaseActions: actionCommitSha === commit.sha,
-        isDraggable: isBranchTip && !branch.isTrunk && branch.ownedShas.length > 0,
+        isDraggable: isBranchTip && !branch.isTrunk && branch.headSha !== branch.baseSha,
         worktreePath: isBranchTip ? branch.worktreePath : null,
         worktreePeacockColor: isBranchTip ? branch.worktreePeacockColor : null,
         pullRequest: isBranchTip ? branch.pullRequest : null,
@@ -411,9 +411,7 @@ function getBranchBaseTime(
   }
 
   return (
-    commitTimesBySha.get(branch.baseSha) ??
-    commitTimesBySha.get(branch.ownedShas.at(-1) ?? '') ??
-    getBranchHeadTime(branch, commitTimesBySha)
+    commitTimesBySha.get(branch.baseSha) ?? getBranchHeadTime(branch, commitTimesBySha)
   );
 }
 

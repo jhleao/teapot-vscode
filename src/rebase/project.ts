@@ -1,5 +1,5 @@
-import type { RebaseIntent, StackBranch, StackState } from '../protocol';
-import { indexBranchesByRef } from './intent';
+import type { RebaseIntent, RebaseIntentNode, StackBranch, StackState } from '../protocol';
+import { indexBranchesByRef, visitIntentNodes } from './intent';
 
 export function applyRebaseIntentToState(state: StackState, intent: RebaseIntent): StackState {
   const branches = state.branches.map((branch) => cloneBranch(branch));
@@ -14,6 +14,8 @@ export function applyRebaseIntentToState(state: StackState, intent: RebaseIntent
   rootBranch.parentRef = targetParent.ref;
   rootBranch.baseSha = intent.targetBaseSha;
 
+  trimRebasedBranchesToHead(intent.root, branchByRef);
+
   rebuildChildRefs(branches);
 
   return {
@@ -23,13 +25,29 @@ export function applyRebaseIntentToState(state: StackState, intent: RebaseIntent
   };
 }
 
+// After a head-only rebase, each moved branch reduces to a single commit on
+// top of its new base. Trim the projection so the preview reflects that.
+function trimRebasedBranchesToHead(
+  root: RebaseIntentNode,
+  branchByRef: Map<string, StackBranch>
+): void {
+  visitIntentNodes(root, (node) => {
+    const branch = branchByRef.get(node.branchRef);
+    if (!branch) {
+      return;
+    }
+
+    const headCommit = branch.commits.find((commit) => commit.sha === node.headSha);
+    branch.commits = headCommit ? [headCommit] : [];
+  });
+}
+
 function cloneBranch(branch: StackBranch): StackBranch {
   const commits = branch.commits.map((commit) => ({ ...commit }));
 
   return {
     ...branch,
     childRefs: [...branch.childRefs],
-    ownedShas: [...branch.ownedShas],
     commits,
   };
 }

@@ -120,7 +120,6 @@ async function createStackBranch(params: {
     baseSha,
     parentRef,
     childRefs: [...childRefs],
-    ownedShas: commits.map((commit) => commit.sha),
     commits,
     isTrunk,
     isRemote: false,
