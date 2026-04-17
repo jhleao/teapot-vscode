@@ -1,6 +1,7 @@
 import { mkdir, readdir } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import * as vscode from 'vscode';
+import { BranchNamingUtils } from '../git/branchNaming';
 import { GitClient } from '../git/gitClient';
 import { PeacockColorUtils } from '../git/peacockColor';
 import { GitStackStateLoader } from '../git/stackState/loader';
@@ -104,6 +105,10 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
   amendCommitMessage(commitSha: string, currentMessage: string): void {
     this.enqueueOperation(() => this.performAmendCommitMessage(commitSha, currentMessage));
+  }
+
+  createBranchAtCommit(commitSha: string): void {
+    this.enqueueOperation(() => this.performCreateBranchAtCommit(commitSha));
   }
 
   deleteWorktree(branchRef: string, worktreePath: string): void {
@@ -447,11 +452,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     }
 
     const existing = new Set((await git.listLocalBranches()).map((b) => b.name));
-    let n = 1;
-    while (existing.has(`wip-${n}`)) {
-      n++;
-    }
-    const branchName = `wip-${n}`;
+    const branchName = BranchNamingUtils.generate(existing);
 
     const newSha = await git.createEmptyCommitOnTop('HEAD', 'chore: wip');
     await git.createBranchAt(branchName, newSha);
@@ -583,6 +584,22 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
     await git.amendCommitMessage(newMessage.trim());
     await this.refresh();
+  }
+
+  private async performCreateBranchAtCommit(commitSha: string): Promise<void> {
+    const git = await this.openGit();
+    if (!git) {
+      return;
+    }
+
+    const existing = new Set((await git.listLocalBranches()).map((b) => b.name));
+    const branchName = BranchNamingUtils.generate(existing);
+
+    await git.createBranchAt(branchName, commitSha);
+    await this.refresh();
+    void vscode.window.showInformationMessage(
+      `Created branch "${branchName}" at ${commitSha.slice(0, 7)}`
+    );
   }
 
   private async performDeleteWorktree(branchRef: string, worktreePath: string): Promise<void> {

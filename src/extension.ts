@@ -40,6 +40,12 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     ),
     vscode.commands.registerCommand(
+      'teapot.createBranchAtCommit',
+      (ctx: { commitSha: string }) => {
+        provider.createBranchAtCommit(ctx.commitSha);
+      }
+    ),
+    vscode.commands.registerCommand(
       'teapot.deleteWorktree',
       (ctx: { branchRef: string; worktreePath: string }) => {
         provider.deleteWorktree(ctx.branchRef, ctx.worktreePath);
