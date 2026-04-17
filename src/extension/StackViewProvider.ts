@@ -532,24 +532,8 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       return;
     }
 
-    const savedSha = branch.headSha;
     await git.deleteBranch(branchRef);
     await this.refresh();
-
-    const choice = await vscode.window.showInformationMessage(
-      `Branch "${branchRef}" deleted`,
-      'Undo'
-    );
-    if (choice === 'Undo') {
-      this.enqueueOperation(async () => {
-        const undoGit = await this.openGit();
-        if (!undoGit) {
-          return;
-        }
-        await undoGit.createBranchAt(branchRef, savedSha);
-        await this.refresh();
-      });
-    }
   }
 
   private async performAmendCommitMessage(
