@@ -83,6 +83,11 @@
         "category": "Teapot"
       },
       {
+        "command": "teapot.createPullRequest",
+        "title": "Create Pull Request...",
+        "category": "Teapot"
+      },
+      {
         "command": "teapot.signInToGitHub",
         "title": "Sign in to GitHub",
         "category": "Teapot"
@@ -140,6 +145,11 @@
           "group": "1_modification@3"
         },
         {
+          "command": "teapot.createPullRequest",
+          "when": "webviewId == 'teapot.stackView' && webviewSection == 'branch-badge' && teapot.gitHubSessionValid && teapotBranchCanCreatePullRequest",
+          "group": "1_modification@4"
+        },
+        {
           "command": "teapot.amendCommitMessage",
           "when": "webviewId == 'teapot.stackView' && webviewSection == 'commit-row' && teapotCommitIsHead",
           "group": "1_modification@1"
@@ -191,6 +201,10 @@
         },
         {
           "command": "teapot.createWorktree",
+          "when": "false"
+        },
+        {
+          "command": "teapot.createPullRequest",
           "when": "false"
         },
         {

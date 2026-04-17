@@ -5,6 +5,8 @@ import { GitClient } from '../git/gitClient';
 import { PeacockColorUtils } from '../git/peacockColor';
 import { GitStackStateLoader } from '../git/stackState/loader';
 import { WorktreeNamingUtils } from '../git/worktreeNaming';
+import { GitHubClient } from '../github/githubClient';
+import { GitHubRemoteUtils } from '../github/remote';
 import type { HostToWebviewMessage, RebaseIntent, StackState, WebviewToHostMessage } from '../protocol';
 import { GitRebaseExecutor } from '../rebase/executor';
 import { isRebaseIntentValid } from '../rebase/intent';
@@ -31,11 +33,14 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   constructor(private readonly context: vscode.ExtensionContext) {
     this.disposables.push(
       vscode.workspace.onDidChangeWorkspaceFolders(() => {
+        this.prEnricher.invalidateAll();
         void this.refresh();
       }),
       vscode.authentication.onDidChangeSessions((event) => {
         if (event.provider.id === 'github') {
+          this.prEnricher.invalidateAuth();
           void this.updateGitHubAuthContext();
+          void this.refresh();
         }
       })
     );
@@ -63,6 +68,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     );
 
     this.attachGitWatcher();
+    await this.invalidateCurrentGitHubPulls();
     await this.refresh();
   }
 
@@ -92,6 +98,10 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
   createWorktree(branchRef: string): void {
     this.enqueueOperation(() => this.performCreateWorktree(branchRef));
+  }
+
+  createPullRequest(branchRef: string): void {
+    this.enqueueOperation(() => this.performCreatePullRequest(branchRef));
   }
 
   signInToGitHub(): void {
@@ -154,6 +164,9 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       case 'forcePushBranch':
         await this.performForcePushBranch(message.branchRef);
         return;
+      case 'createPullRequest':
+        await this.performCreatePullRequest(message.branchRef);
+        return;
     }
   }
 
@@ -166,6 +179,10 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     this.disposeGitWatcher();
     this.gitWatcher = new GitRefsWatcher(repoRoot, () => {
       void this.refresh();
+    }, {
+      onRepoConfigChange: () => {
+        this.prEnricher.invalidateRepo(repoRoot);
+      },
     });
     this.watchedRepoRoot = repoRoot;
   }
@@ -409,11 +426,80 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
   private async performSignInToGitHub(): Promise<void> {
     const session = await GitHubAuthUtils.promptForSession();
+    this.prEnricher.invalidateAuth();
     await this.updateGitHubAuthContext();
     if (!session) {
       return;
     }
     await this.refresh();
+  }
+
+  private async performCreatePullRequest(branchRef: string): Promise<void> {
+    const workspaceRoot = this.getWorkspaceRoot();
+    const state = await this.getStateForUiInteraction(workspaceRoot);
+    const branch = state.branches.find((candidate) => candidate.ref === branchRef);
+    if (!branch) {
+      void vscode.window.showErrorMessage(`Branch "${branchRef}" not found.`);
+      return;
+    }
+    if (branch.pullRequest) {
+      void vscode.window.showInformationMessage(
+        `Branch "${branchRef}" already has a pull request.`
+      );
+      return;
+    }
+
+    const baseRef = this.getPullRequestBaseBranch(state, branchRef);
+    if (!baseRef) {
+      void vscode.window.showErrorMessage(
+        `Cannot create a pull request for "${branchRef}" because its base branch is not eligible.`
+      );
+      return;
+    }
+
+    const git = await this.openGit();
+    if (!git) {
+      return;
+    }
+
+    const remoteUrl = await git.getRemoteUrl('origin');
+    const repo = remoteUrl ? GitHubRemoteUtils.parse(remoteUrl) : null;
+    if (!repo) {
+      void vscode.window.showErrorMessage('Origin is not a GitHub remote');
+      return;
+    }
+
+    const session = await GitHubAuthUtils.promptForSession();
+    this.prEnricher.invalidateAuth();
+    await this.updateGitHubAuthContext();
+    if (!session) {
+      return;
+    }
+
+    try {
+      const title = branch.commits[0]?.message.trim() || branch.ref;
+      const client = new GitHubClient(session.accessToken);
+      const pull = await client.createPullRequest(repo.owner, repo.repo, {
+        title,
+        head: branch.ref,
+        base: baseRef,
+      });
+
+      this.prEnricher.invalidatePulls(git.getRepoRoot());
+      await this.refresh();
+
+      const choice = await vscode.window.showInformationMessage(
+        `Created pull request #${pull.number} for "${branchRef}"`,
+        'Open Pull Request'
+      );
+      if (choice === 'Open Pull Request') {
+        await vscode.env.openExternal(vscode.Uri.parse(pull.html_url));
+      }
+    } catch (error) {
+      void vscode.window.showErrorMessage(
+        `Failed to create pull request for "${branchRef}": ${toErrorMessage(error)}`
+      );
+    }
   }
 
   private async performForcePushBranch(branchRef: string): Promise<void> {
@@ -424,6 +510,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
     try {
       await git.forcePushBranch(branchRef);
+      this.prEnricher.invalidatePulls(git.getRepoRoot());
       void vscode.window.showInformationMessage(`Force pushed "${branchRef}"`);
       await this.refresh();
     } catch (error) {
@@ -446,6 +533,35 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       'teapot.gitHubSessionValid',
       valid
     );
+  }
+
+  private async invalidateCurrentGitHubPulls(): Promise<void> {
+    const workspaceRoot = this.getWorkspaceRoot();
+    if (!workspaceRoot) {
+      return;
+    }
+
+    const git = await GitClient.open(workspaceRoot);
+    if (!git) {
+      return;
+    }
+
+    this.prEnricher.invalidatePulls(git.getRepoRoot());
+  }
+
+  private getPullRequestBaseBranch(state: StackState, branchRef: string): string | null {
+    const branchesByRef = new Map(state.branches.map((branch) => [branch.ref, branch]));
+    const branch = branchesByRef.get(branchRef);
+    if (!branch?.parentRef) {
+      return null;
+    }
+
+    const parent = branchesByRef.get(branch.parentRef);
+    if (!parent) {
+      return null;
+    }
+
+    return parent.isTrunk || parent.pullRequest ? parent.ref : null;
   }
 
   private async performCreateWorktree(branchRef: string): Promise<void> {

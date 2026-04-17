@@ -67,4 +67,5 @@ export type WebviewToHostMessage =
   | { type: 'confirmRebaseIntent' }
   | { type: 'cancelRebaseIntent' }
   | { type: 'checkoutBranch'; branchRef: string }
-  | { type: 'forcePushBranch'; branchRef: string };
+  | { type: 'forcePushBranch'; branchRef: string }
+  | { type: 'createPullRequest'; branchRef: string };

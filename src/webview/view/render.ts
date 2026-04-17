@@ -35,11 +35,12 @@ export function renderStackView(
   }
 
   const rows = layoutRows(state);
+  const canCreatePullRequestByBranch = buildPullRequestCreationMap(state);
   const fragment = document.createDocumentFragment();
   const pendingRebase = state.pendingRebase;
 
   for (const row of rows) {
-    fragment.append(renderRow(row, pendingRebase, options));
+    fragment.append(renderRow(row, pendingRebase, canCreatePullRequestByBranch, options));
   }
 
   root.replaceChildren(fragment);
@@ -48,6 +49,7 @@ export function renderStackView(
 function renderRow(
   row: RowModel,
   pendingRebase: RebaseIntent | null,
+  canCreatePullRequestByBranch: ReadonlyMap<string, boolean>,
   options: RenderStackViewOptions
 ): HTMLElement {
   const rowElement = document.createElement('div');
@@ -96,7 +98,8 @@ function renderRow(
         row.isCurrent,
         row.isTrunkBranch,
         row.worktreePath,
-        row.worktreePeacockColor
+        row.worktreePeacockColor,
+        canCreatePullRequestByBranch.get(row.branchName) ?? false
       )
     );
   }
@@ -202,12 +205,19 @@ function createRowLabels(
   isCurrent: boolean,
   isTrunkBranch: boolean,
   worktreePath: string | null,
-  worktreePeacockColor: string | null
+  worktreePeacockColor: string | null,
+  canCreatePullRequest: boolean
 ): HTMLElement {
   const container = document.createElement('div');
   container.className = 'label-container';
   container.append(
-    createBranchLabel(branchName, isCurrent, isTrunkBranch, worktreePath !== null)
+    createBranchLabel(
+      branchName,
+      isCurrent,
+      isTrunkBranch,
+      worktreePath !== null,
+      canCreatePullRequest
+    )
   );
   if (worktreePath) {
     container.append(createWorktreeLabel(branchName, worktreePath, worktreePeacockColor));
@@ -219,7 +229,8 @@ function createBranchLabel(
   branchName: string,
   isCurrent: boolean,
   isTrunkBranch: boolean,
-  hasWorktree: boolean
+  hasWorktree: boolean,
+  canCreatePullRequest: boolean
 ): HTMLElement {
   const label = document.createElement('span');
   label.className = 'label branch';
@@ -234,6 +245,7 @@ function createBranchLabel(
       isProtected: isCurrent || isTrunkBranch,
       isCurrent,
       hasWorktree,
+      canCreatePullRequest,
     })
   );
 
@@ -243,6 +255,25 @@ function createBranchLabel(
 
   label.append(text);
   return label;
+}
+
+function buildPullRequestCreationMap(state: StackState): Map<string, boolean> {
+  const branchesByRef = new Map(state.branches.map((branch) => [branch.ref, branch]));
+  const result = new Map<string, boolean>();
+
+  for (const branch of state.branches) {
+    const parentRef = branch.parentRef;
+    const parent = parentRef ? branchesByRef.get(parentRef) ?? null : null;
+    const canCreatePullRequest =
+      !branch.isTrunk &&
+      !branch.pullRequest &&
+      !!parent &&
+      (parent.isTrunk || !!parent.pullRequest);
+
+    result.set(branch.ref, canCreatePullRequest);
+  }
+
+  return result;
 }
 
 function createWorktreeLabel(
@@ -409,6 +440,7 @@ export interface BranchBadgeContext {
   teapotBranchProtected: boolean;
   teapotBranchIsCurrent: boolean;
   teapotBranchHasWorktree: boolean;
+  teapotBranchCanCreatePullRequest: boolean;
 }
 
 export function buildBranchBadgeContext(options: {
@@ -416,6 +448,7 @@ export function buildBranchBadgeContext(options: {
   isProtected: boolean;
   isCurrent: boolean;
   hasWorktree: boolean;
+  canCreatePullRequest: boolean;
 }): BranchBadgeContext {
   return {
     webviewSection: 'branch-badge',
@@ -424,6 +457,7 @@ export function buildBranchBadgeContext(options: {
     teapotBranchProtected: options.isProtected,
     teapotBranchIsCurrent: options.isCurrent,
     teapotBranchHasWorktree: options.hasWorktree,
+    teapotBranchCanCreatePullRequest: options.canCreatePullRequest,
   };
 }
 

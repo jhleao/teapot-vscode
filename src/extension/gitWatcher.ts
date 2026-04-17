@@ -2,13 +2,18 @@ import * as vscode from 'vscode';
 
 const REFRESH_DEBOUNCE_MS = 250;
 
+interface GitRefsWatcherOptions {
+  onRepoConfigChange?: () => void;
+}
+
 export class GitRefsWatcher implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
   private refreshTimer: NodeJS.Timeout | undefined;
 
   constructor(
     repoRoot: string,
-    private readonly onChange: () => void
+    private readonly onChange: () => void,
+    private readonly options: GitRefsWatcherOptions = {}
   ) {
     const patterns = ['.git/refs/heads/**', '.git/{HEAD,packed-refs}', '.git/worktrees/**'];
 
@@ -24,6 +29,20 @@ export class GitRefsWatcher implements vscode.Disposable {
 
       this.disposables.push(watcher);
     }
+
+    const configWatcher = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(repoRoot, '.git/config')
+    );
+    const scheduleConfigRefresh = () => {
+      this.options.onRepoConfigChange?.();
+      this.scheduleRefresh();
+    };
+
+    configWatcher.onDidChange(scheduleConfigRefresh, this, this.disposables);
+    configWatcher.onDidCreate(scheduleConfigRefresh, this, this.disposables);
+    configWatcher.onDidDelete(scheduleConfigRefresh, this, this.disposables);
+
+    this.disposables.push(configWatcher);
   }
 
   dispose(): void {
