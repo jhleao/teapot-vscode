@@ -28,6 +28,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   private operationChain: Promise<void> = Promise.resolve();
   private refreshTask: Promise<void> | null = null;
   private refreshPending = false;
+  private refreshId = 0;
   private readonly prEnricher = new GitHubPrEnricher();
 
   constructor(private readonly context: vscode.ExtensionContext) {
@@ -61,6 +62,11 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     this.viewDisposables.push(
       view.webview.onDidReceiveMessage((message: WebviewToHostMessage) => {
         this.enqueueOperation(() => this.handleWebviewMessage(message));
+      }),
+      view.onDidChangeVisibility(() => {
+        if (view.visible) {
+          void this.refresh();
+        }
       }),
       view.onDidDispose(() => {
         this.disposeViewState();
@@ -149,7 +155,15 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
   private async handleWebviewMessage(message: WebviewToHostMessage): Promise<void> {
     switch (message.type) {
-      case 'ready':
+      case 'ready': {
+        const cached = this.cachedStackState;
+        if (cached && this.view) {
+          const projected = this.projectPendingRebase(cached);
+          await this.view.webview.postMessage({ type: 'stack', state: projected });
+        }
+        await this.refresh();
+        return;
+      }
       case 'refresh':
         await this.refresh();
         return;
@@ -196,8 +210,6 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
   private disposeViewState(): void {
     this.disposeGitWatcher();
-    this.cachedStackState = null;
-    this.cachedWorkspaceRoot = null;
     this.pendingRebase = null;
     this.refreshPending = false;
     vscode.Disposable.from(...this.viewDisposables).dispose();
@@ -671,7 +683,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     return git;
   }
 
-  private async loadStackState(workspaceRoot: string | null): Promise<StackState> {
+  private async loadGitOnlyState(workspaceRoot: string | null): Promise<StackState> {
     if (!workspaceRoot) {
       this.cachedWorkspaceRoot = null;
       this.cachedStackState = {
@@ -687,8 +699,18 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
     this.cachedWorkspaceRoot = workspaceRoot;
     const loaded = await GitStackStateLoader.load(workspaceRoot);
-    this.cachedStackState = await this.enrichWithPullRequests(loaded, workspaceRoot);
-    return this.cachedStackState;
+    this.cachedStackState = loaded;
+    return loaded;
+  }
+
+  private async loadStackState(workspaceRoot: string | null): Promise<StackState> {
+    const gitState = await this.loadGitOnlyState(workspaceRoot);
+    if (!workspaceRoot) {
+      return gitState;
+    }
+    const enriched = await this.enrichWithPullRequests(gitState, workspaceRoot);
+    this.cachedStackState = enriched;
+    return enriched;
   }
 
   private async enrichWithPullRequests(
@@ -767,9 +789,38 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         return;
       }
 
+      const myId = ++this.refreshId;
       const workspaceRoot = this.getWorkspaceRoot();
-      const state = await this.loadStackState(workspaceRoot);
-      await this.presentState(state, workspaceRoot);
+      const gitState = await this.loadGitOnlyState(workspaceRoot);
+
+      if (myId !== this.refreshId || !this.view) {
+        continue;
+      }
+      await this.presentState(gitState, workspaceRoot);
+
+      if (workspaceRoot && !gitState.error && gitState.branches.length > 0) {
+        void this.enrichAndPresent(gitState, workspaceRoot, myId);
+      }
+    }
+  }
+
+  private async enrichAndPresent(
+    base: StackState,
+    workspaceRoot: string,
+    id: number
+  ): Promise<void> {
+    try {
+      const enriched = await this.enrichWithPullRequests(base, workspaceRoot);
+      if (id !== this.refreshId || !this.view) {
+        return;
+      }
+      if (enriched === base) {
+        return;
+      }
+      this.cachedStackState = enriched;
+      await this.presentState(enriched, workspaceRoot);
+    } catch (error) {
+      console.warn('teapot: PR enrichment failed', error);
     }
   }
 }

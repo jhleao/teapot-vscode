@@ -32,7 +32,8 @@
           "type": "webview",
           "id": "teapot.stackView",
           "name": "Stack",
-          "contextualTitle": "Teapot"
+          "contextualTitle": "Teapot",
+          "retainContextWhenHidden": true
         }
       ]
     },
