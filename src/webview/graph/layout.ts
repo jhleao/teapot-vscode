@@ -49,6 +49,7 @@ export interface RowModel {
   worktreePeacockColor: string | null;
   pullRequest: PullRequestInfo | null;
   additionalBranchRefs: string[];
+  canCreateBranchAtCommit: boolean;
 }
 
 export function layoutRows(state: StackState): RowModel[] {
@@ -115,6 +116,7 @@ export function layoutRows(state: StackState): RowModel[] {
         worktreePeacockColor: branch.worktreePeacockColor,
         pullRequest: branch.pullRequest,
         additionalBranchRefs: additionalRefsByPrimary.get(branch.ref) ?? [],
+        canCreateBranchAtCommit: false,
       });
     }
 
@@ -153,6 +155,7 @@ export function layoutRows(state: StackState): RowModel[] {
         additionalBranchRefs: isBranchTip
           ? additionalRefsByPrimary.get(branch.ref) ?? []
           : [],
+        canCreateBranchAtCommit: !isBranchTip && !branch.isTrunk,
       });
     }
 
@@ -176,6 +179,7 @@ export function layoutRows(state: StackState): RowModel[] {
         worktreePeacockColor: null,
         pullRequest: null,
         additionalBranchRefs: [],
+        canCreateBranchAtCommit: false,
       });
     }
   };

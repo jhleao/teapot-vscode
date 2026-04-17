@@ -31,6 +31,7 @@ interface DragSession {
 
 type RebaseAction = 'confirm-rebase' | 'cancel-rebase';
 type ForcePushAction = 'force-push-branch';
+type CreateBranchAction = 'create-branch-at-commit';
 
 const DRAG_THRESHOLD_PX = 4;
 const AUTO_SCROLL_EDGE_PX = 40;
@@ -143,6 +144,16 @@ export class StackInteractionController {
       const branchRef = actionButton?.dataset.branchRef;
       if (branchRef) {
         this.postMessage({ type: 'forcePushBranch', branchRef });
+      }
+      return;
+    }
+
+    if (isCreateBranchAction(action)) {
+      const commitSha = actionButton?.dataset.commitSha;
+      if (commitSha) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.postMessage({ type: 'createBranchAtCommit', commitSha });
       }
       return;
     }
@@ -412,6 +423,10 @@ function isRebaseAction(action: string | undefined): action is RebaseAction {
 
 function isForcePushAction(action: string | undefined): action is ForcePushAction {
   return action === 'force-push-branch';
+}
+
+function isCreateBranchAction(action: string | undefined): action is CreateBranchAction {
+  return action === 'create-branch-at-commit';
 }
 
 function parseBranchOverflowRefs(serialized: string | undefined): string[] {

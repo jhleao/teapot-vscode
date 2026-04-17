@@ -105,6 +105,10 @@ function renderRow(
     );
   }
 
+  if (row.kind === 'commit' && row.canCreateBranchAtCommit && row.commit) {
+    rowElement.append(createBranchAtCommitButton(row.commit.sha));
+  }
+
   const subject = document.createElement('span');
   subject.className = 'subject';
 
@@ -193,6 +197,18 @@ function createForcePushButton(branchRef: string): HTMLButtonElement {
   path.setAttribute('d', 'M8 13V3M4 7l4-4 4 4');
   svg.append(path);
   button.append(svg);
+  return button;
+}
+
+function createBranchAtCommitButton(commitSha: string): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.className = 'create-branch-at-commit';
+  button.type = 'button';
+  button.dataset.action = 'create-branch-at-commit';
+  button.dataset.commitSha = commitSha;
+  button.title = 'Create a branch at this commit';
+  button.setAttribute('aria-label', 'Create branch at this commit');
+  button.textContent = 'Create branch';
   return button;
 }
 

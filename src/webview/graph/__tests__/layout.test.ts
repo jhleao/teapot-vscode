@@ -1054,4 +1054,56 @@ describe('layoutRows', () => {
     expect(featureTip).toBeDefined();
     expect(fixupTip).toBeDefined();
   });
+
+  it('marks non-tip non-trunk commits with canCreateBranchAtCommit', () => {
+    const state: StackState = {
+      branches: [
+        {
+          ref: 'main',
+          headSha: 'm1',
+          baseSha: 'm1',
+          parentRef: null,
+          childRefs: ['feature'],
+          commits: [{ sha: 'm1', message: 'main', author: 'dev', timeMs: 0, parentSha: '' }],
+          isTrunk: true,
+          isRemote: false,
+          isCurrent: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'feature',
+          headSha: 'f2',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: [],
+          commits: [
+            { sha: 'f2', message: 'feature tip', author: 'dev', timeMs: 2, parentSha: 'f1' },
+            { sha: 'f1', message: 'feature base', author: 'dev', timeMs: 1, parentSha: 'm1' },
+          ],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: true,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+      ],
+      trunk: 'main',
+      current: 'feature',
+      repoRoot: '/repo',
+      error: null,
+      pendingRebase: null,
+    };
+
+    const rows = layoutRows(state);
+    const featureTip = rows.find((row) => row.kind === 'commit' && row.commit?.sha === 'f2');
+    const featureBase = rows.find((row) => row.kind === 'commit' && row.commit?.sha === 'f1');
+    const trunkRow = rows.find((row) => row.kind === 'commit' && row.commit?.sha === 'm1');
+
+    expect(featureTip).toMatchObject({ isBranchTip: true, canCreateBranchAtCommit: false });
+    expect(featureBase).toMatchObject({ isBranchTip: false, canCreateBranchAtCommit: true });
+    expect(trunkRow).toMatchObject({ isTrunkBranch: true, canCreateBranchAtCommit: false });
+  });
 });

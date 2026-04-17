@@ -209,6 +209,9 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       case 'createPullRequest':
         await this.performCreatePullRequest(message.branchRef);
         return;
+      case 'createBranchAtCommit':
+        this.createBranchAtCommit(message.commitSha);
+        return;
     }
   }
 
