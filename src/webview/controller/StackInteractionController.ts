@@ -540,6 +540,22 @@ function areBranchesVisuallyEqual(
     left.worktreePeacockColor === right.worktreePeacockColor &&
     areStringArraysEqual(left.childRefs, right.childRefs) &&
     areStringArraysEqual(left.ownedShas, right.ownedShas) &&
-    areCommitsEqual(left.commits, right.commits)
+    areCommitsEqual(left.commits, right.commits) &&
+    arePullRequestsEqual(left.pullRequest, right.pullRequest)
+  );
+}
+
+function arePullRequestsEqual(
+  left: StackState['branches'][number]['pullRequest'],
+  right: StackState['branches'][number]['pullRequest']
+): boolean {
+  if (!left || !right) {
+    return left === right;
+  }
+  return (
+    left.number === right.number &&
+    left.url === right.url &&
+    left.state === right.state &&
+    left.isInSync === right.isInSync
   );
 }
