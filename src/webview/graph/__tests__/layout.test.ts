@@ -613,6 +613,7 @@ describe('layoutRows', () => {
       url: 'https://github.com/a/b/pull/7',
       state: 'open',
       isInSync: true,
+      baseRef: 'main',
     };
 
     const state: StackState = {

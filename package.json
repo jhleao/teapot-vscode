@@ -132,6 +132,12 @@
         "title": "GitHub: Sign In Required",
         "category": "Teapot",
         "icon": "$(warning)"
+      },
+      {
+        "command": "teapot.gitHubStatusLoading",
+        "title": "GitHub: Loading…",
+        "category": "Teapot",
+        "icon": "$(sync~spin)"
       }
     ],
     "menus": {
@@ -172,12 +178,17 @@
         },
         {
           "command": "teapot.gitHubStatus",
-          "when": "view == teapot.stackView && teapot.gitHubSessionValid",
+          "when": "view == teapot.stackView && teapot.gitHubSessionValid && !teapot.gitHubLoading",
           "group": "navigation@2"
         },
         {
           "command": "teapot.gitHubStatusUnauthenticated",
-          "when": "view == teapot.stackView && !teapot.gitHubSessionValid",
+          "when": "view == teapot.stackView && !teapot.gitHubSessionValid && !teapot.gitHubLoading",
+          "group": "navigation@2"
+        },
+        {
+          "command": "teapot.gitHubStatusLoading",
+          "when": "view == teapot.stackView && teapot.gitHubLoading",
           "group": "navigation@2"
         },
         {
@@ -285,6 +296,10 @@
         },
         {
           "command": "teapot.gitHubStatusUnauthenticated",
+          "when": "false"
+        },
+        {
+          "command": "teapot.gitHubStatusLoading",
           "when": "false"
         }
       ]

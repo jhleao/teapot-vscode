@@ -30,6 +30,7 @@ function createPull(overrides: Partial<GitHubPullPayload> = {}): GitHubPullPaylo
     draft: false,
     merged_at: null,
     head: { ref: 'feature', sha: 'abc123' },
+    base: { ref: 'main' },
     ...overrides,
   };
 }
@@ -88,6 +89,7 @@ describe('GitHubPrResolver.match', () => {
       url: pull.html_url,
       state: 'open',
       isInSync: true,
+      baseRef: 'main',
     });
   });
 
@@ -151,5 +153,46 @@ describe('GitHubPrResolver.match', () => {
     const result = GitHubPrResolver.match([branch], [pull]);
 
     expect(result.size).toBe(0);
+  });
+
+  it('marks PR out of sync when head matches but base ref differs from expected', () => {
+    const branch = createBranch({ ref: 'feature', headSha: 'abc' });
+    const pull = createPull({
+      head: { ref: 'feature', sha: 'abc' },
+      base: { ref: 'main' },
+    });
+    const expected = new Map<string, string | null>([['feature', 'develop']]);
+
+    const result = GitHubPrResolver.match([branch], [pull], expected);
+
+    expect(result.get('feature')).toMatchObject({ isInSync: false, baseRef: 'main' });
+  });
+
+  it('marks PR in sync when both head sha and base ref match expected', () => {
+    const branch = createBranch({ ref: 'feature', headSha: 'abc' });
+    const pull = createPull({
+      head: { ref: 'feature', sha: 'abc' },
+      base: { ref: 'develop' },
+    });
+    const expected = new Map<string, string | null>([['feature', 'develop']]);
+
+    const result = GitHubPrResolver.match([branch], [pull], expected);
+
+    expect(result.get('feature')).toMatchObject({ isInSync: true, baseRef: 'develop' });
+  });
+
+  it('ignores base divergence for merged/closed PRs', () => {
+    const branch = createBranch({ ref: 'feature', headSha: 'abc' });
+    const pull = createPull({
+      state: 'closed',
+      merged_at: '2025-01-01T00:00:00Z',
+      head: { ref: 'feature', sha: 'abc' },
+      base: { ref: 'main' },
+    });
+    const expected = new Map<string, string | null>([['feature', 'develop']]);
+
+    const result = GitHubPrResolver.match([branch], [pull], expected);
+
+    expect(result.get('feature')).toMatchObject({ state: 'merged', isInSync: true });
   });
 });

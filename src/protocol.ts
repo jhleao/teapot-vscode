@@ -14,6 +14,20 @@ export interface PullRequestInfo {
   state: PullRequestState;
   // Only meaningful for open/draft; always true for merged/closed.
   isInSync: boolean;
+  // PR's current base branch on GitHub (bare ref, e.g. "main").
+  baseRef: string;
+}
+
+export type GitHubPendingOpKind = 'push' | 'create-pr';
+
+export interface GitHubPendingOp {
+  branchRef: string;
+  kind: GitHubPendingOpKind;
+}
+
+export interface GitHubActivity {
+  isFetching: boolean;
+  pendingOps: GitHubPendingOp[];
 }
 
 export interface StackBranch {
@@ -92,7 +106,13 @@ export interface StackState {
   error: string | null;
   pendingRebase: RebaseIntent | null;
   activeRebase: ActiveRebaseState | null;
+  githubActivity?: GitHubActivity;
 }
+
+export const EMPTY_GITHUB_ACTIVITY: GitHubActivity = Object.freeze({
+  isFetching: false,
+  pendingOps: [] as GitHubPendingOp[],
+}) as GitHubActivity;
 
 export type HostToWebviewMessage = {
   type: 'stack';

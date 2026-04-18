@@ -1,5 +1,6 @@
 import type {
   ActiveRebaseState,
+  GitHubActivity,
   PullRequestInfo,
   RebaseIntent,
   StackBranch,
@@ -18,7 +19,10 @@ export type PendingActionState =
 
 export interface RenderStackViewOptions {
   pendingAction: PendingActionState;
+  pushPending?: ReadonlySet<string>;
 }
+
+const EMPTY_ACTIVITY: GitHubActivity = { isFetching: false, pendingOps: [] };
 
 export interface RebaseActionButtonModel {
   label: string;
@@ -51,6 +55,23 @@ export function renderStackView(
   const branchesByRef = new Map(state.branches.map((branch) => [branch.ref, branch]));
   const fragment = document.createDocumentFragment();
   const pendingRebase = state.pendingRebase;
+  const activity = state.githubActivity ?? EMPTY_ACTIVITY;
+  const pushPending = new Set<string>(options.pushPending ?? []);
+  const createPrPending = new Set<string>();
+  for (const op of activity.pendingOps) {
+    if (op.kind === 'push') {
+      pushPending.add(op.branchRef);
+    } else if (op.kind === 'create-pr') {
+      createPrPending.add(op.branchRef);
+    }
+  }
+  const rowContext: RowRenderContext = {
+    pendingRebase,
+    canCreatePullRequestByBranch,
+    pushPending,
+    createPrPending,
+    options,
+  };
 
   if (state.activeRebase) {
     fragment.append(createActiveRebaseSection(state.activeRebase, options.pendingAction));
@@ -63,15 +84,21 @@ export function renderStackView(
   for (const row of rows) {
     if (shouldInjectUncommittedChangesRow(row, branchesByRef)) {
       fragment.append(createUncommittedChangesRow(row));
-      fragment.append(
-        renderRow({ ...row, hasTop: true }, pendingRebase, canCreatePullRequestByBranch, options)
-      );
+      fragment.append(renderRow({ ...row, hasTop: true }, rowContext));
     } else {
-      fragment.append(renderRow(row, pendingRebase, canCreatePullRequestByBranch, options));
+      fragment.append(renderRow(row, rowContext));
     }
   }
 
   root.replaceChildren(fragment);
+}
+
+interface RowRenderContext {
+  pendingRebase: RebaseIntent | null;
+  canCreatePullRequestByBranch: ReadonlyMap<string, boolean>;
+  pushPending: ReadonlySet<string>;
+  createPrPending: ReadonlySet<string>;
+  options: RenderStackViewOptions;
 }
 
 function shouldInjectUncommittedChangesRow(
@@ -257,10 +284,10 @@ function buildActiveRebaseStatusText(activeRebase: ActiveRebaseState): string {
 
 function renderRow(
   row: RowModel,
-  pendingRebase: RebaseIntent | null,
-  canCreatePullRequestByBranch: ReadonlyMap<string, boolean>,
-  options: RenderStackViewOptions
+  context: RowRenderContext
 ): HTMLElement {
+  const { pendingRebase, canCreatePullRequestByBranch, pushPending, createPrPending, options } =
+    context;
   const rowElement = document.createElement('div');
   rowElement.className = 'row';
   rowElement.dataset.branchRef = row.branchName;
@@ -327,11 +354,17 @@ function renderRow(
   }
 
   rowElement.append(subject);
-  if (row.pullRequest) {
+  if (row.kind === 'commit' && row.isBranchTip && createPrPending.has(row.branchName)) {
     const prGroup = document.createElement('div');
     prGroup.className = 'pr-group';
-    if (isPullRequestOutOfSync(row.pullRequest)) {
-      prGroup.append(createForcePushButton(row.branchName));
+    prGroup.append(createPendingPullRequestLabel('Creating PR…'));
+    rowElement.append(prGroup);
+  } else if (row.pullRequest) {
+    const prGroup = document.createElement('div');
+    prGroup.className = 'pr-group';
+    const isPushing = pushPending.has(row.branchName);
+    if (isPushing || isPullRequestOutOfSync(row.pullRequest)) {
+      prGroup.append(createForcePushButton(row.branchName, isPushing));
     }
     prGroup.append(createPullRequestLabel(row.pullRequest));
     rowElement.append(prGroup);
@@ -383,30 +416,65 @@ function createPullRequestIcon(): SVGElement {
   return svg;
 }
 
-function createForcePushButton(branchRef: string): HTMLButtonElement {
+function createForcePushButton(branchRef: string, isPending = false): HTMLButtonElement {
   const button = document.createElement('button');
-  button.className = 'pr-action force-push';
+  button.className = `pr-action force-push${isPending ? ' loading' : ''}`;
   button.type = 'button';
   button.dataset.action = 'force-push-branch';
   button.dataset.branchRef = branchRef;
-  button.title = `Force push "${branchRef}" (--force-with-lease)`;
-  button.setAttribute('aria-label', `Force push ${branchRef}`);
+  if (isPending) {
+    button.disabled = true;
+    button.title = `Pushing "${branchRef}"…`;
+    button.setAttribute('aria-label', `Pushing ${branchRef}`);
+    button.append(createSpinnerIcon());
+  } else {
+    button.title = `Force push "${branchRef}" (--force-with-lease)`;
+    button.setAttribute('aria-label', `Force push ${branchRef}`);
 
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'label-icon');
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '1.75');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    svg.setAttribute('aria-hidden', 'true');
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M8 13V3M4 7l4-4 4 4');
+    svg.append(path);
+    button.append(svg);
+  }
+  return button;
+}
+
+function createSpinnerIcon(): SVGElement {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('class', 'label-icon');
+  svg.setAttribute('class', 'label-icon spinner');
   svg.setAttribute('viewBox', '0 0 16 16');
   svg.setAttribute('fill', 'none');
   svg.setAttribute('stroke', 'currentColor');
   svg.setAttribute('stroke-width', '1.75');
   svg.setAttribute('stroke-linecap', 'round');
-  svg.setAttribute('stroke-linejoin', 'round');
   svg.setAttribute('aria-hidden', 'true');
 
-  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  path.setAttribute('d', 'M8 13V3M4 7l4-4 4 4');
-  svg.append(path);
-  button.append(svg);
-  return button;
+  const arc = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  arc.setAttribute('d', 'M14 8a6 6 0 1 1-6-6');
+  svg.append(arc);
+  return svg;
+}
+
+function createPendingPullRequestLabel(text: string): HTMLElement {
+  const label = document.createElement('span');
+  label.className = 'label pr pending';
+  label.title = text;
+  label.append(createSpinnerIcon());
+  const textSpan = document.createElement('span');
+  textSpan.className = 'label-text';
+  textSpan.textContent = text;
+  label.append(textSpan);
+  return label;
 }
 
 function createBranchAtCommitButton(commitSha: string): HTMLButtonElement {

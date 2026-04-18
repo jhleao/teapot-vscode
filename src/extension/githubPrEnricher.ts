@@ -6,6 +6,7 @@ import {
   type GitHubPullPayload,
   type GitHubPullListResponse,
 } from '../github/githubClient';
+import { PrBaseUtils } from '../github/prBaseResolver';
 import { GitHubPrResolver } from '../github/prResolver';
 import { GitHubRemoteUtils, type GitHubRepoHandle } from '../github/remote';
 
@@ -56,7 +57,8 @@ export class GitHubPrEnricher {
     }
 
     const pulls = await this.fetchPulls(token, repo.owner, repo.repo);
-    return GitHubPrResolver.match(branches, pulls);
+    const expectedBaseRefByBranch = PrBaseUtils.buildExpectedBaseMap(branches);
+    return GitHubPrResolver.match(branches, pulls, expectedBaseRefByBranch);
   }
 
   invalidateAuth(): void {

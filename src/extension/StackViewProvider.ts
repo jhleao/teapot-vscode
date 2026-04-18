@@ -9,6 +9,8 @@ import { WorktreeNamingUtils } from '../git/worktreeNaming';
 import { GitHubClient } from '../github/githubClient';
 import { GitHubRemoteUtils } from '../github/remote';
 import type {
+  GitHubActivity,
+  GitHubPendingOpKind,
   HostToWebviewMessage,
   RebaseIntent,
   RebaseIntentNode,
@@ -16,6 +18,7 @@ import type {
   StackState,
   WebviewToHostMessage,
 } from '../protocol';
+import { PrBaseUtils } from '../github/prBaseResolver';
 import { RebaseQueueExecutor, type QueueRunOutcome } from '../rebase/executor';
 import { isRebaseIntentValid } from '../rebase/intent';
 import { applyRebaseIntentToState } from '../rebase/project';
@@ -42,11 +45,15 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   private refreshId = 0;
   private reconciling = false;
   private readonly prEnricher = new GitHubPrEnricher();
+  private githubActivity: GitHubActivity = { isFetching: false, pendingOps: [] };
 
   constructor(private readonly context: vscode.ExtensionContext) {
+    void vscode.commands.executeCommand('setContext', 'teapot.gitHubLoading', false);
     this.disposables.push(
       vscode.workspace.onDidChangeWorkspaceFolders(() => {
         this.prEnricher.invalidateAll();
+        this.githubActivity = { isFetching: false, pendingOps: [] };
+        void vscode.commands.executeCommand('setContext', 'teapot.gitHubLoading', false);
         void this.refresh();
       }),
       vscode.authentication.onDidChangeSessions((event) => {
@@ -896,45 +903,50 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       return;
     }
 
+    await this.addPendingOp('create-pr', branchRef);
     try {
-      await git.forcePushBranch(branchRef);
-    } catch (error) {
-      void vscode.window.showErrorMessage(
-        `Failed to push "${branchRef}" before creating PR: ${toErrorMessage(error)}`
-      );
-      return;
-    }
-
-    const session = await GitHubAuthUtils.promptForSession();
-    this.prEnricher.invalidateAuth();
-    await this.updateGitHubAuthContext();
-    if (!session) {
-      return;
-    }
-
-    try {
-      const title = branch.commits[0]?.message.trim() || branch.ref;
-      const client = new GitHubClient(session.accessToken);
-      const pull = await client.createPullRequest(repo.owner, repo.repo, {
-        title,
-        head: branch.ref,
-        base: baseRef,
-      });
-
-      this.prEnricher.invalidatePulls(git.getRepoRoot());
-      await this.refresh();
-
-      const choice = await vscode.window.showInformationMessage(
-        `Created pull request #${pull.number} for "${branchRef}"`,
-        'Open Pull Request'
-      );
-      if (choice === 'Open Pull Request') {
-        await vscode.env.openExternal(vscode.Uri.parse(pull.html_url));
+      try {
+        await git.forcePushBranch(branchRef);
+      } catch (error) {
+        void vscode.window.showErrorMessage(
+          `Failed to push "${branchRef}" before creating PR: ${toErrorMessage(error)}`
+        );
+        return;
       }
-    } catch (error) {
-      void vscode.window.showErrorMessage(
-        `Failed to create pull request for "${branchRef}": ${toErrorMessage(error)}`
-      );
+
+      const session = await GitHubAuthUtils.promptForSession();
+      this.prEnricher.invalidateAuth();
+      await this.updateGitHubAuthContext();
+      if (!session) {
+        return;
+      }
+
+      try {
+        const title = branch.commits[0]?.message.trim() || branch.ref;
+        const client = new GitHubClient(session.accessToken);
+        const pull = await client.createPullRequest(repo.owner, repo.repo, {
+          title,
+          head: branch.ref,
+          base: baseRef,
+        });
+
+        this.prEnricher.invalidatePulls(git.getRepoRoot());
+        await this.refresh();
+
+        const choice = await vscode.window.showInformationMessage(
+          `Created pull request #${pull.number} for "${branchRef}"`,
+          'Open Pull Request'
+        );
+        if (choice === 'Open Pull Request') {
+          await vscode.env.openExternal(vscode.Uri.parse(pull.html_url));
+        }
+      } catch (error) {
+        void vscode.window.showErrorMessage(
+          `Failed to create pull request for "${branchRef}": ${toErrorMessage(error)}`
+        );
+      }
+    } finally {
+      await this.removePendingOp('create-pr', branchRef);
     }
   }
 
@@ -990,15 +1002,115 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       return;
     }
 
+    await this.addPendingOp('push', branchRef);
     try {
-      await git.forcePushBranch(branchRef);
+      const workspaceRoot = this.getWorkspaceRoot();
+      const state = await this.getStateForUiInteraction(workspaceRoot);
+      const branch = state.branches.find((candidate) => candidate.ref === branchRef);
+      const pr = branch?.pullRequest ?? null;
+      const expectedBase = branch
+        ? PrBaseUtils.expectedBaseFor(state.branches, branchRef)
+        : null;
+      const prIsLive = pr?.state === 'open' || pr?.state === 'draft';
+      const baseDiverged =
+        !!(prIsLive && pr && expectedBase && pr.baseRef && pr.baseRef !== expectedBase);
+
+      try {
+        await git.forcePushBranch(branchRef);
+      } catch (error) {
+        void vscode.window.showErrorMessage(
+          `Failed to push "${branchRef}": ${toErrorMessage(error)}`
+        );
+        return;
+      }
+
+      const remoteUrl = await git.getRemoteUrl('origin');
+      const repo = remoteUrl ? GitHubRemoteUtils.parse(remoteUrl) : null;
+
+      let client: GitHubClient | null = null;
+      if (repo && prIsLive && pr) {
+        const silent = await GitHubAuthUtils.getSilentSession();
+        if (silent) {
+          client = new GitHubClient(silent.accessToken);
+        } else if (baseDiverged) {
+          const prompted = await GitHubAuthUtils.promptForSession();
+          this.prEnricher.invalidateAuth();
+          await this.updateGitHubAuthContext();
+          if (prompted) {
+            client = new GitHubClient(prompted.accessToken);
+          }
+        }
+      }
+
+      let baseUpdated = false;
+      if (baseDiverged && pr && expectedBase && repo && client) {
+        try {
+          await client.updatePullRequestBase(
+            repo.owner,
+            repo.repo,
+            pr.number,
+            expectedBase
+          );
+          baseUpdated = true;
+        } catch (error) {
+          void vscode.window.showErrorMessage(
+            `Failed to update PR base for "${branchRef}": ${toErrorMessage(error)}`
+          );
+        }
+      } else if (baseDiverged && !repo) {
+        void vscode.window.showErrorMessage('Origin is not a GitHub remote');
+      }
+
+      // Poll GitHub until the PR reflects our push / base change. GitHub has a
+      // read-after-write delay; without this the next refresh can return stale
+      // data and the UI keeps showing "out of sync" until the user refreshes
+      // again manually.
+      if (client && repo && pr && branch) {
+        await this.waitForPullRequestUpdate(client, repo.owner, repo.repo, pr.number, {
+          expectedHeadSha: branch.headSha,
+          expectedBaseRef: baseUpdated ? expectedBase : null,
+        });
+      }
+
       this.prEnricher.invalidatePulls(git.getRepoRoot());
-      void vscode.window.showInformationMessage(`Force pushed "${branchRef}"`);
       await this.refresh();
-    } catch (error) {
-      void vscode.window.showErrorMessage(
-        `Failed to push "${branchRef}": ${toErrorMessage(error)}`
-      );
+
+      if (baseUpdated) {
+        void vscode.window.showInformationMessage(
+          `Pushed "${branchRef}" and updated PR base to "${expectedBase}"`
+        );
+      } else {
+        void vscode.window.showInformationMessage(`Force pushed "${branchRef}"`);
+      }
+    } finally {
+      await this.removePendingOp('push', branchRef);
+    }
+  }
+
+  private async waitForPullRequestUpdate(
+    client: GitHubClient,
+    owner: string,
+    repo: string,
+    pullNumber: number,
+    expected: { expectedHeadSha: string | null; expectedBaseRef: string | null }
+  ): Promise<void> {
+    const deadline = Date.now() + 10_000;
+    let delay = 500;
+    while (Date.now() < deadline) {
+      try {
+        const fresh = await client.getPullRequest(owner, repo, pullNumber);
+        const headOk =
+          !expected.expectedHeadSha || fresh.head.sha === expected.expectedHeadSha;
+        const baseOk =
+          !expected.expectedBaseRef || fresh.base.ref === expected.expectedBaseRef;
+        if (headOk && baseOk) {
+          return;
+        }
+      } catch {
+        // Transient read errors — keep polling until the deadline.
+      }
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      delay = Math.min(delay * 1.5, 2000);
     }
   }
 
@@ -1120,9 +1232,24 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     }
 
     this.cachedWorkspaceRoot = workspaceRoot;
+    const previousPrByRef = new Map(
+      (this.cachedStackState?.branches ?? []).map(
+        (branch) => [branch.ref, branch.pullRequest] as const
+      )
+    );
     const loaded = await GitStackStateLoader.load(workspaceRoot);
-    this.cachedStackState = loaded;
-    return loaded;
+    // Carry previous PR data forward until the next enrichment lands. Without
+    // this the git-only refresh clears PR labels for a tick before enrichment
+    // restores them, which looks like the whole GitHub state flashing away.
+    const withPrs: StackState = {
+      ...loaded,
+      branches: loaded.branches.map((branch) => ({
+        ...branch,
+        pullRequest: branch.pullRequest ?? previousPrByRef.get(branch.ref) ?? null,
+      })),
+    };
+    this.cachedStackState = withPrs;
+    return withPrs;
   }
 
   private async loadStackState(workspaceRoot: string | null): Promise<StackState> {
@@ -1172,7 +1299,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       return;
     }
 
-    const projectedState = this.projectPendingRebase(state);
+    const projectedState = this.withGitHubActivity(this.projectPendingRebase(state));
     const message: HostToWebviewMessage = { type: 'stack', state: projectedState };
     await this.view.webview.postMessage(message);
 
@@ -1185,6 +1312,62 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     if (repoRoot !== this.watchedRepoRoot) {
       this.attachGitWatcher(repoRoot);
     }
+  }
+
+  private withGitHubActivity(state: StackState): StackState {
+    return { ...state, githubActivity: this.snapshotGitHubActivity() };
+  }
+
+  private snapshotGitHubActivity(): GitHubActivity {
+    return {
+      isFetching: this.githubActivity.isFetching,
+      pendingOps: this.githubActivity.pendingOps.map((op) => ({ ...op })),
+    };
+  }
+
+  private async repaintActivity(): Promise<void> {
+    if (!this.view || !this.cachedStackState) {
+      return;
+    }
+    await this.presentState(this.cachedStackState);
+  }
+
+  private async setGitHubFetching(isFetching: boolean): Promise<void> {
+    if (this.githubActivity.isFetching === isFetching) {
+      return;
+    }
+    this.githubActivity = { ...this.githubActivity, isFetching };
+    await vscode.commands.executeCommand(
+      'setContext',
+      'teapot.gitHubLoading',
+      isFetching
+    );
+    await this.repaintActivity();
+  }
+
+  private async addPendingOp(kind: GitHubPendingOpKind, branchRef: string): Promise<void> {
+    const existing = this.githubActivity.pendingOps.some(
+      (op) => op.kind === kind && op.branchRef === branchRef
+    );
+    if (existing) {
+      return;
+    }
+    this.githubActivity = {
+      ...this.githubActivity,
+      pendingOps: [...this.githubActivity.pendingOps, { kind, branchRef }],
+    };
+    await this.repaintActivity();
+  }
+
+  private async removePendingOp(kind: GitHubPendingOpKind, branchRef: string): Promise<void> {
+    const next = this.githubActivity.pendingOps.filter(
+      (op) => !(op.kind === kind && op.branchRef === branchRef)
+    );
+    if (next.length === this.githubActivity.pendingOps.length) {
+      return;
+    }
+    this.githubActivity = { ...this.githubActivity, pendingOps: next };
+    await this.repaintActivity();
   }
 
   private getCachedStackState(workspaceRoot: string | null): StackState | null {
@@ -1235,6 +1418,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     workspaceRoot: string,
     id: number
   ): Promise<void> {
+    await this.setGitHubFetching(true);
     try {
       const enriched = await this.enrichWithPullRequests(base, workspaceRoot);
       if (id !== this.refreshId || !this.view) {
@@ -1247,6 +1431,8 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       await this.presentState(enriched, workspaceRoot);
     } catch (error) {
       console.warn('teapot: PR enrichment failed', error);
+    } finally {
+      await this.setGitHubFetching(false);
     }
   }
 }

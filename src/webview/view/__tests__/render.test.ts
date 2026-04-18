@@ -236,6 +236,7 @@ describe('buildPullRequestLabelViewModel', () => {
     url: 'https://github.com/a/b/pull/42',
     state: 'open',
     isInSync: true,
+    baseRef: 'main',
   };
 
   it('renders an open in-sync PR as a plain #N link', () => {

@@ -8,6 +8,9 @@ export interface GitHubPullPayload {
     ref: string;
     sha: string;
   };
+  base: {
+    ref: string;
+  };
 }
 
 export interface GitHubPullListOptions {
@@ -51,6 +54,47 @@ export class GitHubClient {
       headers: this.createHeaders(),
       body: JSON.stringify(options),
     });
+
+    if (!response.ok) {
+      throw new Error(await this.formatError(response));
+    }
+
+    return (await response.json()) as GitHubPullPayload;
+  }
+
+  async getPullRequest(
+    owner: string,
+    repo: string,
+    pullNumber: number
+  ): Promise<GitHubPullPayload> {
+    const response = await fetch(
+      `${GitHubClient.API_BASE}/repos/${owner}/${repo}/pulls/${pullNumber}`,
+      {
+        headers: this.createHeaders(),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(await this.formatError(response));
+    }
+
+    return (await response.json()) as GitHubPullPayload;
+  }
+
+  async updatePullRequestBase(
+    owner: string,
+    repo: string,
+    pullNumber: number,
+    base: string
+  ): Promise<GitHubPullPayload> {
+    const response = await fetch(
+      `${GitHubClient.API_BASE}/repos/${owner}/${repo}/pulls/${pullNumber}`,
+      {
+        method: 'PATCH',
+        headers: this.createHeaders(),
+        body: JSON.stringify({ base }),
+      }
+    );
 
     if (!response.ok) {
       throw new Error(await this.formatError(response));

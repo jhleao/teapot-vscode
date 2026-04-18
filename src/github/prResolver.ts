@@ -31,7 +31,8 @@ export class GitHubPrResolver {
 
   static match(
     branches: StackBranch[],
-    pulls: GitHubPullPayload[]
+    pulls: GitHubPullPayload[],
+    expectedBaseRefByBranch: ReadonlyMap<string, string | null> = new Map()
   ): Map<string, PullRequestInfo> {
     const result = new Map<string, PullRequestInfo>();
     if (branches.length === 0 || pulls.length === 0) {
@@ -49,12 +50,16 @@ export class GitHubPrResolver {
 
       const state = GitHubPrResolver.deriveState(pull);
       const isLive = state === 'open' || state === 'draft';
+      const expectedBase = expectedBaseRefByBranch.get(branch.ref) ?? null;
+      const headMatches = pull.head.sha === branch.headSha;
+      const baseMatches = expectedBase === null || pull.base.ref === expectedBase;
 
       result.set(branch.ref, {
         number: pull.number,
         url: pull.html_url,
         state,
-        isInSync: isLive ? pull.head.sha === branch.headSha : true,
+        isInSync: isLive ? headMatches && baseMatches : true,
+        baseRef: pull.base.ref,
       });
     }
 

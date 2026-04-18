@@ -47,6 +47,9 @@ describe('GitHubClient.listPulls', () => {
           ref: 'feature',
           sha: 'abc123',
         },
+        base: {
+          ref: 'main',
+        },
       },
     ];
     const fetchMock = vi.fn().mockResolvedValue(
@@ -86,6 +89,9 @@ describe('GitHubClient.createPullRequest', () => {
       head: {
         ref: 'feature',
         sha: 'abc123',
+      },
+      base: {
+        ref: 'main',
       },
     };
     const fetchMock = vi.fn().mockResolvedValue(
@@ -177,5 +183,43 @@ describe('GitHubClient.createPullRequest', () => {
         base: 'main',
       })
     ).rejects.toThrow('GitHub API 422: Validation Failed — head: invalid');
+  });
+});
+
+describe('GitHubClient.updatePullRequestBase', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('PATCHes the pulls endpoint with the new base ref', async () => {
+    const pull = {
+      number: 9,
+      html_url: 'https://github.com/owner/repo/pull/9',
+      state: 'open' as const,
+      draft: false,
+      merged_at: null,
+      head: { ref: 'feature', sha: 'abc' },
+      base: { ref: 'develop' },
+    };
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(pull), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new GitHubClient('token');
+    const result = await client.updatePullRequestBase('owner', 'repo', 9, 'develop');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.github.com/repos/owner/repo/pulls/9',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ base: 'develop' }),
+        headers: expect.objectContaining({ Authorization: 'Bearer token' }),
+      })
+    );
+    expect(result).toEqual(pull);
   });
 });

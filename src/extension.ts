@@ -71,6 +71,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('teapot.gitHubStatusUnauthenticated', () => {
       provider.signInToGitHub();
     }),
+    vscode.commands.registerCommand('teapot.gitHubStatusLoading', () => {
+      void provider.refresh();
+    }),
     vscode.commands.registerCommand(
       'teapot.openWorktreeInNewWindow',
       async (ctx: { worktreePath: string }) => {

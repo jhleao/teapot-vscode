@@ -351,6 +351,38 @@ body {
   height: 12px;
 }
 
+.pr-action.loading {
+  color: var(--vscode-descriptionForeground, #8b949e);
+}
+
+.pr-action.loading:hover {
+  background: transparent;
+}
+
+.label.pr.pending {
+  color: var(--vscode-descriptionForeground, #8b949e);
+  opacity: 0.85;
+}
+
+.label.pr.pending:hover {
+  text-decoration: none;
+  opacity: 0.85;
+}
+
+.label-icon.spinner {
+  animation: teapot-spin 0.9s linear infinite;
+  transform-origin: 50% 50%;
+}
+
+@keyframes teapot-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .label-icon {
   width: 10px;
   height: 10px;

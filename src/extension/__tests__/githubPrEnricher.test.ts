@@ -79,6 +79,9 @@ function createPull(overrides: Partial<GitHubPullPayload> = {}): GitHubPullPaylo
       ref: 'feature',
       sha: 'abc123',
     },
+    base: {
+      ref: 'main',
+    },
     ...overrides,
   };
 }

@@ -48,6 +48,7 @@ export class StackInteractionController {
   private renderedState: StackState | null = null;
   private pendingAction: PendingActionState = null;
   private awaitingHostSync = false;
+  private readonly optimisticPushPending = new Set<string>();
 
   private readonly drag: DragSession = {
     pendingBranchRef: null,
@@ -81,6 +82,7 @@ export class StackInteractionController {
       !this.renderedState ||
       this.pendingAction !== null ||
       this.drag.activeBranchRef !== null ||
+      this.optimisticPushPending.size > 0 ||
       !areStackStatesVisuallyEqual(this.renderedState, message.state);
 
     this.renderedState = message.state;
@@ -89,10 +91,38 @@ export class StackInteractionController {
     }
     this.pendingAction = null;
     this.awaitingHostSync = false;
+    this.reconcileOptimisticPushPending(message.state);
     this.resetDragSession();
     if (shouldRender) {
       this.render();
       this.revealPendingRebaseActions();
+    }
+  }
+
+  private reconcileOptimisticPushPending(state: StackState): void {
+    if (this.optimisticPushPending.size === 0) {
+      return;
+    }
+    const hostPushPending = new Set(
+      (state.githubActivity?.pendingOps ?? [])
+        .filter((op) => op.kind === 'push')
+        .map((op) => op.branchRef)
+    );
+    // Clear optimistic entries once the host has registered (or surpassed) the op:
+    // the host pipeline guarantees a stack message with the pending op before it
+    // finishes, so as soon as hostPushPending contains the branch we can hand
+    // over the spinner to host-driven state. If the op completes so fast we never
+    // observe the pending phase, we still want to clear eventually — so also drop
+    // when the PR for that branch is back in sync.
+    for (const branchRef of [...this.optimisticPushPending]) {
+      if (hostPushPending.has(branchRef)) {
+        this.optimisticPushPending.delete(branchRef);
+        continue;
+      }
+      const branch = state.branches.find((candidate) => candidate.ref === branchRef);
+      if (!branch || !branch.pullRequest || branch.pullRequest.isInSync) {
+        this.optimisticPushPending.delete(branchRef);
+      }
     }
   }
 
@@ -149,7 +179,9 @@ export class StackInteractionController {
 
     if (isForcePushAction(action)) {
       const branchRef = actionButton?.dataset.branchRef;
-      if (branchRef) {
+      if (branchRef && !this.optimisticPushPending.has(branchRef)) {
+        this.optimisticPushPending.add(branchRef);
+        this.render();
         this.postMessage({ type: 'forcePushBranch', branchRef });
       }
       return;
@@ -290,6 +322,7 @@ export class StackInteractionController {
 
     renderStackView(this.elements.contentElement, this.renderedState, {
       pendingAction: this.pendingAction,
+      pushPending: this.optimisticPushPending,
     });
   }
 
@@ -501,6 +534,7 @@ function areStackStatesVisuallyEqual(left: StackState, right: StackState): boole
     left.trunk !== right.trunk ||
     !areRebaseIntentsEqual(left.pendingRebase, right.pendingRebase) ||
     !areActiveRebasesEqual(left.activeRebase, right.activeRebase) ||
+    !areGitHubActivitiesEqual(left.githubActivity, right.githubActivity) ||
     left.branches.length !== right.branches.length
   ) {
     return false;
@@ -512,6 +546,29 @@ function areStackStatesVisuallyEqual(left: StackState, right: StackState): boole
     }
   }
 
+  return true;
+}
+
+function areGitHubActivitiesEqual(
+  left: StackState['githubActivity'],
+  right: StackState['githubActivity']
+): boolean {
+  const leftOps = left?.pendingOps ?? [];
+  const rightOps = right?.pendingOps ?? [];
+  if ((left?.isFetching ?? false) !== (right?.isFetching ?? false)) {
+    return false;
+  }
+  if (leftOps.length !== rightOps.length) {
+    return false;
+  }
+  for (let index = 0; index < leftOps.length; index += 1) {
+    if (
+      leftOps[index].branchRef !== rightOps[index].branchRef ||
+      leftOps[index].kind !== rightOps[index].kind
+    ) {
+      return false;
+    }
+  }
   return true;
 }
 
@@ -638,6 +695,7 @@ function arePullRequestsEqual(
     left.number === right.number &&
     left.url === right.url &&
     left.state === right.state &&
-    left.isInSync === right.isInSync
+    left.isInSync === right.isInSync &&
+    left.baseRef === right.baseRef
   );
 }
