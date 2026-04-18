@@ -606,6 +606,7 @@ function areBranchesVisuallyEqual(
     left.baseSha === right.baseSha &&
     left.parentRef === right.parentRef &&
     left.isCurrent === right.isCurrent &&
+    left.hasUncommittedChanges === right.hasUncommittedChanges &&
     left.worktreePath === right.worktreePath &&
     left.worktreePeacockColor === right.worktreePeacockColor &&
     areStringArraysEqual(left.childRefs, right.childRefs) &&
