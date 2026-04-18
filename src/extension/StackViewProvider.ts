@@ -221,6 +221,12 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       case 'createBranchAtCommit':
         this.createBranchAtCommit(message.commitSha);
         return;
+      case 'amendAndRebase':
+        this.amendAndRebase();
+        return;
+      case 'branchAndCommit':
+        this.branchAndCommit();
+        return;
     }
   }
 

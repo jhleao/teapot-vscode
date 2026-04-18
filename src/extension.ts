@@ -4,7 +4,9 @@ import { StackViewProvider } from './extension/StackViewProvider';
 
 export function activate(context: vscode.ExtensionContext): void {
   const provider = new StackViewProvider(context);
-  const scmWatcher = new ScmChangesWatcher();
+  const scmWatcher = new ScmChangesWatcher(() => {
+    void provider.refresh();
+  });
   void scmWatcher.initialize();
 
   context.subscriptions.push(

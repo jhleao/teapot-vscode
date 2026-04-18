@@ -2,6 +2,7 @@ import type {
   ActiveRebaseState,
   PullRequestInfo,
   RebaseIntent,
+  StackBranch,
   StackState,
 } from '../../protocol';
 import { layoutRows, type RowModel } from '../graph/layout';
@@ -47,6 +48,7 @@ export function renderStackView(
 
   const rows = layoutRows(state);
   const canCreatePullRequestByBranch = buildPullRequestCreationMap(state);
+  const branchesByRef = new Map(state.branches.map((branch) => [branch.ref, branch]));
   const fragment = document.createDocumentFragment();
   const pendingRebase = state.pendingRebase;
 
@@ -55,10 +57,142 @@ export function renderStackView(
   }
 
   for (const row of rows) {
-    fragment.append(renderRow(row, pendingRebase, canCreatePullRequestByBranch, options));
+    if (shouldInjectUncommittedChangesRow(row, branchesByRef)) {
+      fragment.append(createUncommittedChangesRow(row));
+      fragment.append(
+        renderRow({ ...row, hasTop: true }, pendingRebase, canCreatePullRequestByBranch, options)
+      );
+    } else {
+      fragment.append(renderRow(row, pendingRebase, canCreatePullRequestByBranch, options));
+    }
   }
 
   root.replaceChildren(fragment);
+}
+
+function shouldInjectUncommittedChangesRow(
+  row: RowModel,
+  branchesByRef: ReadonlyMap<string, StackBranch>
+): boolean {
+  if (row.kind !== 'commit' || !row.isBranchTip || !row.isCurrent) {
+    return false;
+  }
+  return !!branchesByRef.get(row.branchName)?.hasUncommittedChanges;
+}
+
+function createUncommittedChangesRow(tipRow: RowModel): HTMLElement {
+  const rowElement = document.createElement('div');
+  rowElement.className = 'row current uncommitted-changes';
+
+  const graphContainer = document.createElement('div');
+  graphContainer.className = 'graph-container current';
+  const graphRow: RowModel = {
+    ...tipRow,
+    kind: 'commit',
+    commit: undefined,
+    isBranchTip: false,
+    hasBottom: true,
+    rebaseStatus: null,
+    showsRebaseActions: false,
+    isDraggable: false,
+    worktreePath: null,
+    worktreePeacockColor: null,
+    pullRequest: null,
+    additionalBranchRefs: [],
+    canCreateBranchAtCommit: false,
+  };
+  graphContainer.append(renderRowGraph(graphRow));
+  rowElement.append(graphContainer);
+
+  rowElement.append(createUncommittedChangesArrow());
+
+  const subject = document.createElement('span');
+  subject.className = 'subject';
+  subject.textContent = 'Uncommitted changes';
+  rowElement.append(subject);
+
+  const actions = document.createElement('div');
+  actions.className = 'uncommitted-changes-actions';
+  actions.append(
+    createUncommittedActionButton({
+      action: 'branch-and-commit',
+      label: 'Branch and Commit',
+      icon: createBranchIcon(),
+    }),
+    createUncommittedActionButton({
+      action: 'amend-and-rebase',
+      label: 'Amend and Rebase Stack',
+      icon: createAmendIcon(),
+    })
+  );
+  rowElement.append(actions);
+
+  return rowElement;
+}
+
+function createUncommittedChangesArrow(): SVGElement {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'uncommitted-changes-arrow');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.5');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+
+  const corner = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  corner.setAttribute('d', 'M 14 4 H 9 A 1.5 1.5 0 0 0 7.5 5.5 V 12');
+  svg.append(corner);
+
+  const head = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  head.setAttribute('d', 'M 5 10 L 7.5 12.5 L 10 10');
+  svg.append(head);
+
+  return svg;
+}
+
+function createUncommittedActionButton(options: {
+  action: string;
+  label: string;
+  icon: SVGElement;
+}): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.className = 'uncommitted-action';
+  button.type = 'button';
+  button.dataset.action = options.action;
+  button.title = options.label;
+  button.setAttribute('aria-label', options.label);
+  button.append(options.icon);
+  return button;
+}
+
+function createCodiconSvg(pathData: string): SVGElement {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'label-icon');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('fill', 'currentColor');
+  svg.setAttribute('aria-hidden', 'true');
+
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('fill-rule', 'evenodd');
+  path.setAttribute('clip-rule', 'evenodd');
+  path.setAttribute('d', pathData);
+  svg.append(path);
+
+  return svg;
+}
+
+function createBranchIcon(): SVGElement {
+  return createCodiconSvg(
+    'M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122V6A2.5 2.5 0 0110 8.5H6a1 1 0 00-1 1v1.128a2.251 2.251 0 11-1.5 0V5.372a2.25 2.25 0 111.5 0v4.836A2.492 2.492 0 016 9h4a1 1 0 001-1v-.628A2.25 2.25 0 019.5 3.25zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5zM3.5 3.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0z'
+  );
+}
+
+function createAmendIcon(): SVGElement {
+  return createCodiconSvg(
+    'M3.221 3.739l2.261 2.269.7-.71-1.411-1.416h.09c1.374 0 2.57.814 3.124 1.986l.901-.439A4.448 4.448 0 004.861 2.8L3.56 2.93l.76-.761-.7-.709L1.5 3.42l1.721 1.72.7-.71zM14.5 1h-7l-.5.5v3h1V2h6v8h-1.5v1h2l.5-.5v-9l-.5-.5zm-3.362 5h-.076a3.446 3.446 0 01.04 1H11v1h2v2H7v-2h2.118a4.446 4.446 0 00-.051-1H6.5l-.5.5V13h-.938l-3.405-3.429-.707.709 3.25 3.27H1V14h12v-1h-7l.5-.5V11h7v-2.5L13 8h-1.862z'
+  );
 }
 
 function createActiveRebaseSection(

@@ -60,6 +60,7 @@ function createBranch(overrides: Partial<StackBranch> = {}): StackBranch {
     isTrunk: false,
     isRemote: false,
     isCurrent: false,
+    hasUncommittedChanges: false,
     worktreePath: null,
     worktreePeacockColor: null,
     pullRequest: null,

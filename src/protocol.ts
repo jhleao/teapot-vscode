@@ -26,6 +26,7 @@ export interface StackBranch {
   isTrunk: boolean;
   isRemote: boolean;
   isCurrent: boolean;
+  hasUncommittedChanges: boolean;
   worktreePath: string | null;
   worktreePeacockColor: string | null;
   pullRequest: PullRequestInfo | null;
@@ -110,4 +111,6 @@ export type WebviewToHostMessage =
   | { type: 'pickBranchAction'; branchRefs: string[] }
   | { type: 'forcePushBranch'; branchRef: string }
   | { type: 'createPullRequest'; branchRef: string }
-  | { type: 'createBranchAtCommit'; commitSha: string };
+  | { type: 'createBranchAtCommit'; commitSha: string }
+  | { type: 'amendAndRebase' }
+  | { type: 'branchAndCommit' };

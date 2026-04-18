@@ -25,10 +25,12 @@ export class GitStackStateLoader {
     const repoRoot = git.getRepoRoot();
 
     try {
-      const [{ branches, currentBranch: currentBranchRef }, worktrees] = await Promise.all([
-        git.listLocalBranchesSnapshot(),
-        git.listWorktrees(),
-      ]);
+      const [{ branches, currentBranch: currentBranchRef }, worktrees, hasUncommittedChanges] =
+        await Promise.all([
+          git.listLocalBranchesSnapshot(),
+          git.listWorktrees(),
+          git.hasAnyChanges(),
+        ]);
       const trunkRef = selectTrunk(iterBranchNames(branches));
       const topology = await resolveBranchTopology(git, branches, trunkRef);
       const childRefsByParent = buildChildRefsByParent(topology);
@@ -55,6 +57,7 @@ export class GitStackStateLoader {
             parentHeadSha,
             childRefs: childRefsByParent.get(branch.name) ?? [],
             currentBranchRef,
+            hasUncommittedChanges,
             trunkRef,
             trunkCommitLimit,
             worktreePath,
@@ -122,6 +125,7 @@ async function createStackBranch(params: {
   parentHeadSha: string | null;
   childRefs: string[];
   currentBranchRef: string | null;
+  hasUncommittedChanges: boolean;
   trunkRef: string | null;
   trunkCommitLimit: number;
   worktreePath: string | null;
@@ -135,11 +139,13 @@ async function createStackBranch(params: {
     parentHeadSha,
     childRefs,
     currentBranchRef,
+    hasUncommittedChanges,
     trunkRef,
     trunkCommitLimit,
     worktreePath,
     worktreePeacockColor,
   } = params;
+  const isCurrent = branch.name === currentBranchRef;
   const isTrunk = branch.name === trunkRef;
   const commits = await git.getCommits({
     fromRef: isTrunk ? null : parentHeadSha,
@@ -156,7 +162,8 @@ async function createStackBranch(params: {
     commits,
     isTrunk,
     isRemote: false,
-    isCurrent: branch.name === currentBranchRef,
+    isCurrent,
+    hasUncommittedChanges: isCurrent && hasUncommittedChanges,
     worktreePath,
     worktreePeacockColor,
     pullRequest: null,

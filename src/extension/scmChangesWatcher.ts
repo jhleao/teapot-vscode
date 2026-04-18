@@ -8,6 +8,8 @@ export class ScmChangesWatcher implements vscode.Disposable {
   private readonly apiDisposables: vscode.Disposable[] = [];
   private api: ScmGitApi | null = null;
 
+  constructor(private readonly onDidChange?: () => void) {}
+
   async initialize(): Promise<void> {
     const api = await ScmGitApiUtils.getApi();
     if (!api) {
@@ -21,12 +23,12 @@ export class ScmChangesWatcher implements vscode.Disposable {
     this.apiDisposables.push(
       api.onDidOpenRepository((repo) => {
         this.attach(repo);
-        this.updateContext();
+        this.notifyChanged();
       }),
       api.onDidCloseRepository((repo) => {
         this.repoDisposables.get(repo)?.dispose();
         this.repoDisposables.delete(repo);
-        this.updateContext();
+        this.notifyChanged();
       })
     );
     this.updateContext();
@@ -44,8 +46,13 @@ export class ScmChangesWatcher implements vscode.Disposable {
   }
 
   private attach(repo: ScmGitRepository): void {
-    const d = repo.state.onDidChange(() => this.updateContext());
+    const d = repo.state.onDidChange(() => this.notifyChanged());
     this.repoDisposables.set(repo, d);
+  }
+
+  private notifyChanged(): void {
+    this.updateContext();
+    this.onDidChange?.();
   }
 
   private updateContext(): void {

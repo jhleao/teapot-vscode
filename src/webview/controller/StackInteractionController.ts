@@ -36,6 +36,7 @@ type RebaseAction =
   | 'abort-rebase';
 type ForcePushAction = 'force-push-branch';
 type CreateBranchAction = 'create-branch-at-commit';
+type UncommittedAction = 'amend-and-rebase' | 'branch-and-commit';
 
 const DRAG_THRESHOLD_PX = 4;
 const AUTO_SCROLL_EDGE_PX = 40;
@@ -160,6 +161,17 @@ export class StackInteractionController {
         event.stopPropagation();
         this.postMessage({ type: 'createBranchAtCommit', commitSha });
       }
+      return;
+    }
+
+    if (isUncommittedAction(action)) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.postMessage(
+        action === 'amend-and-rebase'
+          ? { type: 'amendAndRebase' }
+          : { type: 'branchAndCommit' }
+      );
       return;
     }
 
@@ -449,6 +461,10 @@ function isForcePushAction(action: string | undefined): action is ForcePushActio
 
 function isCreateBranchAction(action: string | undefined): action is CreateBranchAction {
   return action === 'create-branch-at-commit';
+}
+
+function isUncommittedAction(action: string | undefined): action is UncommittedAction {
+  return action === 'amend-and-rebase' || action === 'branch-and-commit';
 }
 
 function parseBranchOverflowRefs(serialized: string | undefined): string[] {
