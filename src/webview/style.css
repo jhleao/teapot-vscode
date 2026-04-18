@@ -138,6 +138,14 @@ body {
   background: var(--vscode-list-hoverBackground);
 }
 
+.row.blank-separator {
+  pointer-events: none;
+}
+
+.row.blank-separator:hover {
+  background: transparent;
+}
+
 .row.rebase-prompting {
   background: var(--vscode-list-inactiveSelectionBackground, var(--vscode-list-hoverBackground));
 }

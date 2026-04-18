@@ -8,15 +8,7 @@ const CIRCLE_STROKE_WIDTH = 2;
 const CURVE_RADIUS = 5;
 
 export function renderRowGraph(row: RowModel): SVGSVGElement {
-  const maxLane = getMaxLane(row);
-  const width = SWIMLANE_WIDTH * (maxLane + 2);
-  const svg = document.createElementNS(SVG_NS, 'svg');
-
-  svg.setAttribute('class', 'graph');
-  svg.setAttribute('width', String(width));
-  svg.setAttribute('height', String(SWIMLANE_HEIGHT));
-  svg.setAttribute('viewBox', `0 0 ${width} ${SWIMLANE_HEIGHT}`);
-
+  const svg = createGraphSvg(row);
   const laneX = (lane: number): number => SWIMLANE_WIDTH * (lane + 1);
   const midY = SWIMLANE_HEIGHT / 2;
   appendPassThroughPaths(svg, row, laneX);
@@ -59,6 +51,28 @@ export function renderRowGraph(row: RowModel): SVGSVGElement {
     svg.append(path);
   }
 
+  return svg;
+}
+
+// Draws only the passThrough (ancestor) lanes for the given row, with no
+// commit dot and no branch lane of its own — used as a blank separator
+// above stack tips so unrelated branches don't visually crowd each other.
+export function renderBlankRowGraph(row: RowModel): SVGSVGElement {
+  const svg = createGraphSvg(row);
+  const laneX = (lane: number): number => SWIMLANE_WIDTH * (lane + 1);
+  appendPassThroughPaths(svg, row, laneX);
+  return svg;
+}
+
+function createGraphSvg(row: RowModel): SVGSVGElement {
+  const maxLane = getMaxLane(row);
+  const width = SWIMLANE_WIDTH * (maxLane + 2);
+  const svg = document.createElementNS(SVG_NS, 'svg');
+
+  svg.setAttribute('class', 'graph');
+  svg.setAttribute('width', String(width));
+  svg.setAttribute('height', String(SWIMLANE_HEIGHT));
+  svg.setAttribute('viewBox', `0 0 ${width} ${SWIMLANE_HEIGHT}`);
   return svg;
 }
 

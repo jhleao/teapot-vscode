@@ -7,7 +7,7 @@ import type {
   StackState,
 } from '../../protocol';
 import { layoutRows, type RowModel } from '../graph/layout';
-import { renderRowGraph } from '../graph/svg';
+import { renderBlankRowGraph, renderRowGraph } from '../graph/svg';
 
 export type PendingActionState =
   | 'sync'
@@ -81,7 +81,11 @@ export function renderStackView(
     fragment.append(createPullTrunkRow(state.trunk));
   }
 
-  for (const row of rows) {
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i];
+    if (isStackTipRow(row) && rows[i - 1]?.kind !== 'branch-header') {
+      fragment.append(createBlankSeparatorRow(row));
+    }
     if (shouldInjectUncommittedChangesRow(row, branchesByRef)) {
       fragment.append(createUncommittedChangesRow(row));
       fragment.append(renderRow({ ...row, hasTop: true }, rowContext));
@@ -109,6 +113,32 @@ function shouldInjectUncommittedChangesRow(
     return false;
   }
   return !!branchesByRef.get(row.branchName)?.hasUncommittedChanges;
+}
+
+// A "stack tip" is a leaf branch's tip — nothing renders directly above it
+// at the same commit, so without a gap the previous stack's last row sits
+// flush against this one. hasTop=false means no child/spin-off rows above
+// the tip; the row above must therefore belong to an unrelated branch.
+function isStackTipRow(row: RowModel): boolean {
+  return (
+    row.kind === 'commit' &&
+    row.isBranchTip &&
+    !row.isTrunkBranch &&
+    !row.hasTop
+  );
+}
+
+function createBlankSeparatorRow(tipRow: RowModel): HTMLElement {
+  const rowElement = document.createElement('div');
+  rowElement.className = 'row blank-separator';
+  rowElement.setAttribute('aria-hidden', 'true');
+
+  const graphContainer = document.createElement('div');
+  graphContainer.className = 'graph-container';
+  graphContainer.append(renderBlankRowGraph(tipRow));
+  rowElement.append(graphContainer);
+
+  return rowElement;
 }
 
 function createUncommittedChangesRow(tipRow: RowModel): HTMLElement {
