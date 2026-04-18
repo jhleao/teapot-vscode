@@ -37,6 +37,7 @@ type RebaseAction =
 type ForcePushAction = 'force-push-branch';
 type CreateBranchAction = 'create-branch-at-commit';
 type UncommittedAction = 'amend-and-rebase' | 'branch-and-commit';
+type PullTrunkAction = 'pull-trunk';
 
 const DRAG_THRESHOLD_PX = 4;
 const AUTO_SCROLL_EDGE_PX = 40;
@@ -172,6 +173,13 @@ export class StackInteractionController {
           ? { type: 'amendAndRebase' }
           : { type: 'branchAndCommit' }
       );
+      return;
+    }
+
+    if (isPullTrunkAction(action)) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.postMessage({ type: 'pullTrunk' });
       return;
     }
 
@@ -465,6 +473,10 @@ function isCreateBranchAction(action: string | undefined): action is CreateBranc
 
 function isUncommittedAction(action: string | undefined): action is UncommittedAction {
   return action === 'amend-and-rebase' || action === 'branch-and-commit';
+}
+
+function isPullTrunkAction(action: string | undefined): action is PullTrunkAction {
+  return action === 'pull-trunk';
 }
 
 function parseBranchOverflowRefs(serialized: string | undefined): string[] {

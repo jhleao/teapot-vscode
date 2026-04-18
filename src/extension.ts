@@ -23,6 +23,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('teapot.amendAndRebase', () => {
       provider.amendAndRebase();
     }),
+    vscode.commands.registerCommand('teapot.pullTrunk', () => {
+      provider.pullTrunk();
+    }),
     vscode.commands.registerCommand('teapot.copyBranchName', (ctx: { branchRef: string }) => {
       provider.copyBranchName(ctx.branchRef);
     }),

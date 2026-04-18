@@ -56,6 +56,10 @@ export function renderStackView(
     fragment.append(createActiveRebaseSection(state.activeRebase, options.pendingAction));
   }
 
+  if (state.trunk) {
+    fragment.append(createPullTrunkRow(state.trunk));
+  }
+
   for (const row of rows) {
     if (shouldInjectUncommittedChangesRow(row, branchesByRef)) {
       fragment.append(createUncommittedChangesRow(row));
@@ -415,6 +419,49 @@ function createBranchAtCommitButton(commitSha: string): HTMLButtonElement {
   button.setAttribute('aria-label', 'Create branch at this commit');
   button.textContent = 'Create branch';
   return button;
+}
+
+function createPullTrunkRow(trunkRef: string): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'pull-trunk-row';
+
+  const button = document.createElement('button');
+  button.className = 'create-branch-at-commit pull-trunk-button';
+  button.type = 'button';
+  button.dataset.action = 'pull-trunk';
+  button.title = `Pull ${trunkRef} from origin`;
+  button.setAttribute('aria-label', `Pull ${trunkRef} from origin`);
+  button.append(createPullIcon());
+  const label = document.createElement('span');
+  label.textContent = 'git pull';
+  button.append(label);
+  row.append(button);
+  return row;
+}
+
+function createPullIcon(): SVGElement {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'pull-trunk-icon');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.5');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+
+  const cloud = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  cloud.setAttribute(
+    'd',
+    'M4.5 8.5a2.5 2.5 0 0 1 .5-4.95 3.5 3.5 0 0 1 6.79.45A2.5 2.5 0 0 1 11.5 9'
+  );
+  svg.append(cloud);
+
+  const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  arrow.setAttribute('d', 'M8 8.5v5.5M5.5 11.5L8 14l2.5-2.5');
+  svg.append(arrow);
+
+  return svg;
 }
 
 export function isPullRequestOutOfSync(pullRequest: PullRequestInfo): boolean {

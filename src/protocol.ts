@@ -113,4 +113,5 @@ export type WebviewToHostMessage =
   | { type: 'createPullRequest'; branchRef: string }
   | { type: 'createBranchAtCommit'; commitSha: string }
   | { type: 'amendAndRebase' }
-  | { type: 'branchAndCommit' };
+  | { type: 'branchAndCommit' }
+  | { type: 'pullTrunk' };

@@ -565,6 +565,26 @@ body {
   outline-offset: 1px;
 }
 
+.pull-trunk-row {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  padding: 6px 12px 2px;
+}
+
+.pull-trunk-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transform: translateX(-11px);
+}
+
+.pull-trunk-icon {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+}
+
 .empty {
   padding: 20px 16px;
   color: var(--vscode-descriptionForeground);

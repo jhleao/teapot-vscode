@@ -142,6 +142,10 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     this.enqueueOperation(() => this.performAmendAndRebase());
   }
 
+  pullTrunk(): void {
+    this.enqueueOperation(() => this.performPullTrunk());
+  }
+
   async refresh(): Promise<void> {
     this.refreshPending = true;
     if (this.refreshTask) {
@@ -226,6 +230,9 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         return;
       case 'branchAndCommit':
         this.branchAndCommit();
+        return;
+      case 'pullTrunk':
+        await this.performPullTrunk();
         return;
     }
   }
@@ -927,6 +934,52 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     } catch (error) {
       void vscode.window.showErrorMessage(
         `Failed to create pull request for "${branchRef}": ${toErrorMessage(error)}`
+      );
+    }
+  }
+
+  private async performPullTrunk(): Promise<void> {
+    const git = await this.openGit();
+    if (!git) {
+      return;
+    }
+
+    const workspaceRoot = this.getWorkspaceRoot();
+    const state = await this.getStateForUiInteraction(workspaceRoot);
+    const trunk = state.trunk;
+    if (!trunk) {
+      void vscode.window.showErrorMessage('No trunk branch detected.');
+      return;
+    }
+
+    const remoteRef = `origin/${trunk}`;
+
+    try {
+      await git.fetch('origin');
+      await git.revParse(remoteRef);
+
+      if (!(await git.branchExists(trunk))) {
+        await git.createBranchAt(trunk, remoteRef);
+      } else {
+        const worktrees = await git.listWorktrees();
+        const trunkWorktree = worktrees.find((w) => w.branch === trunk);
+        if (trunkWorktree) {
+          await git.mergeFastForwardOnlyInWorktree(trunkWorktree.path, remoteRef);
+        } else {
+          await git.fetchRefFastForward('origin', trunk);
+        }
+      }
+
+      void vscode.commands.executeCommand('git.refresh');
+      void vscode.window.showInformationMessage(`Pulled ${trunk} from origin`);
+      await this.refresh();
+    } catch (error) {
+      const message = toErrorMessage(error);
+      const divergenceHint = /non-fast-forward|rejected|would clobber/i.test(message)
+        ? ` — ${trunk} has diverged from origin`
+        : '';
+      void vscode.window.showErrorMessage(
+        `Failed to pull ${trunk}${divergenceHint}: ${message}`
       );
     }
   }

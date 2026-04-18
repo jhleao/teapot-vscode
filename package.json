@@ -51,6 +51,12 @@
         "icon": "$(add)"
       },
       {
+        "command": "teapot.pullTrunk",
+        "title": "Pull Main from Remote",
+        "category": "Teapot",
+        "icon": "$(cloud-download)"
+      },
+      {
         "command": "teapot.branchAndCommit",
         "title": "Teapot: Branch and Commit",
         "icon": "$(git-branch)"
@@ -155,24 +161,29 @@
       ],
       "view/title": [
         {
-          "command": "teapot.createWorkingCommit",
+          "command": "teapot.pullTrunk",
           "when": "view == teapot.stackView",
           "group": "navigation@0"
         },
         {
+          "command": "teapot.createWorkingCommit",
+          "when": "view == teapot.stackView",
+          "group": "navigation@1"
+        },
+        {
           "command": "teapot.gitHubStatus",
           "when": "view == teapot.stackView && teapot.gitHubSessionValid",
-          "group": "navigation@1"
+          "group": "navigation@2"
         },
         {
           "command": "teapot.gitHubStatusUnauthenticated",
           "when": "view == teapot.stackView && !teapot.gitHubSessionValid",
-          "group": "navigation@1"
+          "group": "navigation@2"
         },
         {
           "command": "teapot.refresh",
           "when": "view == teapot.stackView",
-          "group": "navigation@2"
+          "group": "navigation@3"
         }
       ],
       "webview/context": [

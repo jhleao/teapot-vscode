@@ -173,6 +173,27 @@ export class GitClient {
     await this.run(['push', '--force-with-lease', '--quiet', remote, branchRef]);
   }
 
+  async fetch(remote = 'origin'): Promise<void> {
+    await this.run(['fetch', '--prune', '--quiet', remote]);
+  }
+
+  async fetchRefFastForward(remote: string, branch: string): Promise<void> {
+    await this.run(['fetch', '--quiet', remote, `${branch}:${branch}`]);
+  }
+
+  async mergeFastForwardOnlyInWorktree(worktreePath: string, ref: string): Promise<void> {
+    await runGit(worktreePath, ['merge', '--ff-only', '--quiet', ref]);
+  }
+
+  async branchExists(branch: string): Promise<boolean> {
+    try {
+      await this.run(['show-ref', '--verify', '--quiet', `refs/heads/${branch}`]);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async checkout(ref: string): Promise<void> {
     await this.run(['checkout', '--quiet', ref]);
   }
