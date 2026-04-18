@@ -122,4 +122,60 @@ describe('GitHubClient.createPullRequest', () => {
     );
     expect(result).toEqual(pull);
   });
+
+  it('surfaces validation error details from 422 responses', async () => {
+    const errorBody = {
+      message: 'Validation Failed',
+      errors: [
+        {
+          resource: 'PullRequest',
+          code: 'custom',
+          message: 'A pull request already exists for owner:feature.',
+        },
+      ],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(errorBody), {
+        status: 422,
+        statusText: 'Unprocessable Entity',
+        headers: { 'content-type': 'application/json' },
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new GitHubClient('token');
+    await expect(
+      client.createPullRequest('owner', 'repo', {
+        title: 't',
+        head: 'feature',
+        base: 'main',
+      })
+    ).rejects.toThrow(
+      'GitHub API 422: Validation Failed — A pull request already exists for owner:feature.'
+    );
+  });
+
+  it('falls back to field:code when no error message is provided', async () => {
+    const errorBody = {
+      message: 'Validation Failed',
+      errors: [{ resource: 'PullRequest', field: 'head', code: 'invalid' }],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(errorBody), {
+        status: 422,
+        statusText: 'Unprocessable Entity',
+        headers: { 'content-type': 'application/json' },
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new GitHubClient('token');
+    await expect(
+      client.createPullRequest('owner', 'repo', {
+        title: 't',
+        head: 'feature',
+        base: 'main',
+      })
+    ).rejects.toThrow('GitHub API 422: Validation Failed — head: invalid');
+  });
 });

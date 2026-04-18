@@ -889,6 +889,15 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       return;
     }
 
+    try {
+      await git.forcePushBranch(branchRef);
+    } catch (error) {
+      void vscode.window.showErrorMessage(
+        `Failed to push "${branchRef}" before creating PR: ${toErrorMessage(error)}`
+      );
+      return;
+    }
+
     const session = await GitHubAuthUtils.promptForSession();
     this.prEnricher.invalidateAuth();
     await this.updateGitHubAuthContext();

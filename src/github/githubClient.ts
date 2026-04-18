@@ -110,9 +110,22 @@ export class GitHubClient {
     const fallback = `GitHub API ${response.status} ${response.statusText}`;
 
     try {
-      const payload = (await response.json()) as { message?: string };
-      if (payload.message) {
-        return `GitHub API ${response.status}: ${payload.message}`;
+      const payload = (await response.json()) as {
+        message?: string;
+        errors?: Array<{ message?: string; field?: string; code?: string }>;
+      };
+      const details = (payload.errors ?? [])
+        .map((entry) => {
+          if (entry.message) return entry.message;
+          if (entry.field && entry.code) return `${entry.field}: ${entry.code}`;
+          return null;
+        })
+        .filter((s): s is string => !!s)
+        .join('; ');
+      const base = payload.message ?? response.statusText;
+      const suffix = details ? ` — ${details}` : '';
+      if (payload.message || details) {
+        return `GitHub API ${response.status}: ${base}${suffix}`;
       }
     } catch {
       // Ignore malformed error payloads and fall back to the status line.
