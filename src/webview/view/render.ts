@@ -338,6 +338,7 @@ function renderRow(
         commitSha: row.commit.sha,
         currentMessage: row.commit.message,
         isHead: row.isCurrent,
+        canCreateBranchAtCommit: row.canCreateBranchAtCommit,
       })
     );
   }
@@ -873,12 +874,14 @@ export interface CommitRowContext {
   commitSha: string;
   currentMessage: string;
   teapotCommitIsHead: boolean;
+  teapotCanCreateBranchAtCommit: boolean;
 }
 
 export function buildCommitRowContext(options: {
   commitSha: string;
   currentMessage: string;
   isHead: boolean;
+  canCreateBranchAtCommit: boolean;
 }): CommitRowContext {
   return {
     webviewSection: 'commit-row',
@@ -886,6 +889,7 @@ export function buildCommitRowContext(options: {
     commitSha: options.commitSha,
     currentMessage: options.currentMessage,
     teapotCommitIsHead: options.isHead,
+    teapotCanCreateBranchAtCommit: options.canCreateBranchAtCommit,
   };
 }
 

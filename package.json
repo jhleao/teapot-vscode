@@ -225,7 +225,7 @@
         },
         {
           "command": "teapot.createBranchAtCommit",
-          "when": "webviewId == 'teapot.stackView' && webviewSection == 'commit-row'",
+          "when": "webviewId == 'teapot.stackView' && webviewSection == 'commit-row' && teapotCanCreateBranchAtCommit",
           "group": "1_modification@0"
         },
         {
