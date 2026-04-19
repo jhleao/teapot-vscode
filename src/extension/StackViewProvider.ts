@@ -26,6 +26,7 @@ import { QueueBuilderUtils } from '../rebase/queueBuilder';
 import { OperationQueueStore } from '../rebase/queueStore';
 import { GitHubAuthUtils } from '../github/auth';
 import { GitHubPrEnricher } from './githubPrEnricher';
+import { PushExpectationStore } from './pushExpectationStore';
 import { GitRefsWatcher } from './gitWatcher';
 import { ScmGitApiUtils } from './scmGitApi';
 import { renderStackWebviewHtml } from './webviewHtml';
@@ -45,6 +46,9 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   private refreshId = 0;
   private reconciling = false;
   private readonly prEnricher = new GitHubPrEnricher();
+  private readonly pushExpectations = new PushExpectationStore();
+  private readonly activePropagationLoops = new Set<string>();
+  private disposed = false;
   private githubActivity: GitHubActivity = { isFetching: false, pendingOps: [] };
 
   constructor(private readonly context: vscode.ExtensionContext) {
@@ -185,6 +189,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   }
 
   dispose(): void {
+    this.disposed = true;
     this.disposeViewState();
     vscode.Disposable.from(...this.disposables).dispose();
     this.disposables.length = 0;
@@ -950,15 +955,29 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
           base: baseRef,
         });
 
+        // Seed the synthetic PR so the UI renders it immediately, even while
+        // GitHub's list endpoint is still stale. The propagation loop below
+        // keeps refreshing until the real list catches up or the TTL expires.
+        this.pushExpectations.record(branchRef, branch.headSha, baseRef, pull);
+
         this.prEnricher.invalidatePulls(git.getRepoRoot());
         await this.refresh();
 
-        const choice = await vscode.window.showInformationMessage(
-          `Created pull request #${pull.number} for "${branchRef}"`,
-          'Open Pull Request'
-        );
-        if (choice === 'Open Pull Request') {
-          await vscode.env.openExternal(vscode.Uri.parse(pull.html_url));
+        // Fire-and-forget — awaiting this would block the finally (below) on
+        // the user clicking/dismissing the notification, leaving the
+        // "Creating PR…" spinner stuck until they do.
+        void (async () => {
+          const choice = await vscode.window.showInformationMessage(
+            `Created pull request #${pull.number} for "${branchRef}"`,
+            'Open Pull Request'
+          );
+          if (choice === 'Open Pull Request') {
+            await vscode.env.openExternal(vscode.Uri.parse(pull.html_url));
+          }
+        })();
+
+        if (this.pushExpectations.hasActiveFor(branchRef)) {
+          void this.startPushPropagationLoop(branchRef, git.getRepoRoot());
         }
       } catch (error) {
         void vscode.window.showErrorMessage(
@@ -1023,6 +1042,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     }
 
     await this.addPendingOp('push', branchRef);
+    let expectationRecorded = false;
     try {
       const workspaceRoot = this.getWorkspaceRoot();
       const state = await this.getStateForUiInteraction(workspaceRoot);
@@ -1048,11 +1068,11 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       const repo = remoteUrl ? GitHubRemoteUtils.parse(remoteUrl) : null;
 
       let client: GitHubClient | null = null;
-      if (repo && prIsLive && pr) {
+      if (repo && prIsLive && pr && baseDiverged) {
         const silent = await GitHubAuthUtils.getSilentSession();
         if (silent) {
           client = new GitHubClient(silent.accessToken);
-        } else if (baseDiverged) {
+        } else {
           const prompted = await GitHubAuthUtils.promptForSession();
           this.prEnricher.invalidateAuth();
           await this.updateGitHubAuthContext();
@@ -1081,15 +1101,17 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         void vscode.window.showErrorMessage('Origin is not a GitHub remote');
       }
 
-      // Poll GitHub until the PR reflects our push / base change. GitHub has a
-      // read-after-write delay; without this the next refresh can return stale
-      // data and the UI keeps showing "out of sync" until the user refreshes
-      // again manually.
-      if (client && repo && pr && branch) {
-        await this.waitForPullRequestUpdate(client, repo.owner, repo.repo, pr.number, {
-          expectedHeadSha: branch.headSha,
-          expectedBaseRef: baseUpdated ? expectedBase : null,
-        });
+      // Record expected post-push state so the resolver can override stale
+      // GitHub data during the read-after-write propagation window. The
+      // propagation loop (below) will keep refreshing until the expectation
+      // is satisfied by GitHub or it expires.
+      if (branch && pr && prIsLive) {
+        this.pushExpectations.record(
+          branchRef,
+          branch.headSha,
+          baseUpdated ? expectedBase : null
+        );
+        expectationRecorded = true;
       }
 
       this.prEnricher.invalidatePulls(git.getRepoRoot());
@@ -1102,35 +1124,44 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       } else {
         void vscode.window.showInformationMessage(`Force pushed "${branchRef}"`);
       }
+
+      if (expectationRecorded && this.pushExpectations.hasActiveFor(branchRef)) {
+        void this.startPushPropagationLoop(branchRef, git.getRepoRoot());
+      }
     } finally {
-      await this.removePendingOp('push', branchRef);
+      if (!expectationRecorded || !this.pushExpectations.hasActiveFor(branchRef)) {
+        await this.removePendingOp('push', branchRef);
+      }
     }
   }
 
-  private async waitForPullRequestUpdate(
-    client: GitHubClient,
-    owner: string,
-    repo: string,
-    pullNumber: number,
-    expected: { expectedHeadSha: string | null; expectedBaseRef: string | null }
+  private async startPushPropagationLoop(
+    branchRef: string,
+    repoRoot: string
   ): Promise<void> {
-    const deadline = Date.now() + 10_000;
-    let delay = 500;
-    while (Date.now() < deadline) {
-      try {
-        const fresh = await client.getPullRequest(owner, repo, pullNumber);
-        const headOk =
-          !expected.expectedHeadSha || fresh.head.sha === expected.expectedHeadSha;
-        const baseOk =
-          !expected.expectedBaseRef || fresh.base.ref === expected.expectedBaseRef;
-        if (headOk && baseOk) {
-          return;
+    if (this.activePropagationLoops.has(branchRef)) {
+      return;
+    }
+    this.activePropagationLoops.add(branchRef);
+    try {
+      let delay = 500;
+      while (
+        !this.disposed &&
+        this.pushExpectations.hasActiveFor(branchRef)
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        if (this.disposed || !this.pushExpectations.hasActiveFor(branchRef)) {
+          break;
         }
-      } catch {
-        // Transient read errors — keep polling until the deadline.
+        this.prEnricher.invalidatePulls(repoRoot);
+        await this.refresh();
+        delay = Math.min(delay * 1.5, 2000);
       }
-      await new Promise((resolve) => setTimeout(resolve, delay));
-      delay = Math.min(delay * 1.5, 2000);
+    } finally {
+      this.activePropagationLoops.delete(branchRef);
+      // Expectation is satisfied, expired, or the view was disposed — hand the
+      // spinner back to whatever state `refresh` produced.
+      await this.removePendingOp('push', branchRef);
     }
   }
 
@@ -1293,7 +1324,14 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     const repoRoot = state.repoRoot ?? workspaceRoot;
 
     try {
-      const prByBranch = await this.prEnricher.enrich(repoRoot, state.branches);
+      const { prs: prByBranch, satisfiedExpectations } = await this.prEnricher.enrich(
+        repoRoot,
+        state.branches,
+        this.pushExpectations.snapshot()
+      );
+      for (const branchRef of satisfiedExpectations) {
+        this.pushExpectations.clear(branchRef);
+      }
       if (prByBranch.size === 0) {
         return state;
       }

@@ -132,8 +132,8 @@ describe('GitHubPrEnricher', () => {
     const first = await enricher.enrich('/repo', [createBranch()]);
     const second = await enricher.enrich('/repo', [createBranch()]);
 
-    expect(first.get('feature')?.number).toBe(1);
-    expect(second.get('feature')?.number).toBe(1);
+    expect(first.prs.get('feature')?.number).toBe(1);
+    expect(second.prs.get('feature')?.number).toBe(1);
     expect(mocks.getRemoteUrl).toHaveBeenCalledTimes(1);
     expect(mocks.getSilentSession).toHaveBeenCalledTimes(1);
     expect(mocks.listPulls).toHaveBeenCalledTimes(1);
@@ -159,8 +159,8 @@ describe('GitHubPrEnricher', () => {
     enricher.invalidateRepo('/repo');
     const second = await enricher.enrich('/repo', [createBranch()]);
 
-    expect(first.size).toBe(1);
-    expect(second.size).toBe(0);
+    expect(first.prs.size).toBe(1);
+    expect(second.prs.size).toBe(0);
     expect(mocks.getRemoteUrl).toHaveBeenCalledTimes(2);
     expect(mocks.listPulls).toHaveBeenCalledTimes(1);
   });
@@ -178,15 +178,38 @@ describe('GitHubPrEnricher', () => {
     });
 
     const enricher = new GitHubPrEnricher();
-    expect((await enricher.enrich('/repo', [createBranch()])).size).toBe(0);
-    expect((await enricher.enrich('/repo', [createBranch()])).size).toBe(0);
+    expect((await enricher.enrich('/repo', [createBranch()])).prs.size).toBe(0);
+    expect((await enricher.enrich('/repo', [createBranch()])).prs.size).toBe(0);
     expect(mocks.getSilentSession).toHaveBeenCalledTimes(1);
     expect(mocks.listPulls).not.toHaveBeenCalled();
 
     enricher.invalidateAuth();
-    expect((await enricher.enrich('/repo', [createBranch()])).size).toBe(1);
+    expect((await enricher.enrich('/repo', [createBranch()])).prs.size).toBe(1);
     expect(mocks.getSilentSession).toHaveBeenCalledTimes(2);
     expect(mocks.listPulls).toHaveBeenCalledTimes(1);
+  });
+
+  it('forwards push expectations so stale pulls still render as in sync', async () => {
+    mocks.openGit.mockResolvedValue({
+      getRemoteUrl: mocks.getRemoteUrl,
+    });
+    mocks.getRemoteUrl.mockResolvedValue('https://github.com/acme/teapot.git');
+    mocks.getSilentSession.mockResolvedValue(createSession());
+    mocks.listPulls.mockResolvedValue({
+      status: 'modified',
+      pulls: [createPull({ head: { ref: 'feature', sha: 'stale-sha' } })],
+      etag: '"etag-1"',
+    });
+
+    const enricher = new GitHubPrEnricher();
+    const result = await enricher.enrich(
+      '/repo',
+      [createBranch({ headSha: 'new-sha' })],
+      new Map([['feature', { expectedHeadSha: 'new-sha', expectedBaseRef: null }]])
+    );
+
+    expect(result.prs.get('feature')?.isInSync).toBe(true);
+    expect(result.satisfiedExpectations.has('feature')).toBe(false);
   });
 
   it('deduplicates concurrent pull fetches for the same repo', async () => {
@@ -214,8 +237,8 @@ describe('GitHubPrEnricher', () => {
 
     const [first, second] = await Promise.all([firstTask, secondTask]);
 
-    expect(first.get('feature')?.number).toBe(1);
-    expect(second.get('feature')?.number).toBe(1);
+    expect(first.prs.get('feature')?.number).toBe(1);
+    expect(second.prs.get('feature')?.number).toBe(1);
     expect(mocks.getRemoteUrl).toHaveBeenCalledTimes(1);
     expect(mocks.getSilentSession).toHaveBeenCalledTimes(1);
   });

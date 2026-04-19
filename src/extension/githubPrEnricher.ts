@@ -1,4 +1,4 @@
-import type { PullRequestInfo, StackBranch } from '../protocol';
+import type { StackBranch } from '../protocol';
 import { GitClient } from '../git/gitClient';
 import { GitHubAuthUtils } from '../github/auth';
 import {
@@ -7,7 +7,11 @@ import {
   type GitHubPullListResponse,
 } from '../github/githubClient';
 import { PrBaseUtils } from '../github/prBaseResolver';
-import { GitHubPrResolver } from '../github/prResolver';
+import {
+  GitHubPrResolver,
+  type PrMatchResult,
+  type PushExpectationInput,
+} from '../github/prResolver';
 import { GitHubRemoteUtils, type GitHubRepoHandle } from '../github/remote';
 
 interface PullsCacheEntry {
@@ -35,30 +39,37 @@ export class GitHubPrEnricher {
 
   async enrich(
     repoRoot: string,
-    branches: StackBranch[]
-  ): Promise<Map<string, PullRequestInfo>> {
+    branches: StackBranch[],
+    pushExpectations: ReadonlyMap<string, PushExpectationInput> = new Map()
+  ): Promise<PrMatchResult> {
+    const empty: PrMatchResult = { prs: new Map(), satisfiedExpectations: new Set() };
     if (branches.length === 0) {
-      return new Map();
+      return empty;
     }
 
     const git = await GitClient.open(repoRoot);
     if (!git) {
-      return new Map();
+      return empty;
     }
 
     const repo = await this.getRepo(repoRoot, git);
     if (!repo) {
-      return new Map();
+      return empty;
     }
 
     const token = await this.getAccessToken();
     if (!token) {
-      return new Map();
+      return empty;
     }
 
     const pulls = await this.fetchPulls(token, repo.owner, repo.repo);
     const expectedBaseRefByBranch = PrBaseUtils.buildExpectedBaseMap(branches);
-    return GitHubPrResolver.match(branches, pulls, expectedBaseRefByBranch);
+    return GitHubPrResolver.match(
+      branches,
+      pulls,
+      expectedBaseRefByBranch,
+      pushExpectations
+    );
   }
 
   invalidateAuth(): void {

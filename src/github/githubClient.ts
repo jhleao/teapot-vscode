@@ -62,25 +62,6 @@ export class GitHubClient {
     return (await response.json()) as GitHubPullPayload;
   }
 
-  async getPullRequest(
-    owner: string,
-    repo: string,
-    pullNumber: number
-  ): Promise<GitHubPullPayload> {
-    const response = await fetch(
-      `${GitHubClient.API_BASE}/repos/${owner}/${repo}/pulls/${pullNumber}`,
-      {
-        headers: this.createHeaders(),
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(await this.formatError(response));
-    }
-
-    return (await response.json()) as GitHubPullPayload;
-  }
-
   async updatePullRequestBase(
     owner: string,
     repo: string,

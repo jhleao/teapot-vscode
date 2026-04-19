@@ -8,6 +8,17 @@ const STATE_PRIORITY: Record<PullRequestState, number> = {
   closed: 0,
 };
 
+export interface PushExpectationInput {
+  expectedHeadSha: string;
+  expectedBaseRef: string | null;
+  syntheticPull?: GitHubPullPayload | null;
+}
+
+export interface PrMatchResult {
+  prs: Map<string, PullRequestInfo>;
+  satisfiedExpectations: Set<string>;
+}
+
 export class GitHubPrResolver {
   static deriveState(pull: GitHubPullPayload): PullRequestState {
     if (pull.merged_at != null) {
@@ -32,21 +43,32 @@ export class GitHubPrResolver {
   static match(
     branches: StackBranch[],
     pulls: GitHubPullPayload[],
-    expectedBaseRefByBranch: ReadonlyMap<string, string | null> = new Map()
-  ): Map<string, PullRequestInfo> {
-    const result = new Map<string, PullRequestInfo>();
-    if (branches.length === 0 || pulls.length === 0) {
-      return result;
+    expectedBaseRefByBranch: ReadonlyMap<string, string | null> = new Map(),
+    pushExpectations: ReadonlyMap<string, PushExpectationInput> = new Map()
+  ): PrMatchResult {
+    const prs = new Map<string, PullRequestInfo>();
+    const satisfiedExpectations = new Set<string>();
+    if (branches.length === 0) {
+      return { prs, satisfiedExpectations };
+    }
+    if (pulls.length === 0 && pushExpectations.size === 0) {
+      return { prs, satisfiedExpectations };
     }
 
     const bestPullByName = GitHubPrResolver.bestPullByBranchName(pulls);
 
     for (const branch of branches) {
       const normalized = GitHubPrResolver.normalizeBranchName(branch);
-      const pull = bestPullByName.get(normalized);
+      const expectation = pushExpectations.get(branch.ref);
+      const realPull = bestPullByName.get(normalized);
+      // GitHub's list endpoint can lag behind a just-created PR. If we hold a
+      // synthetic payload from the create response, use it until the real list
+      // catches up.
+      const pull = realPull ?? expectation?.syntheticPull ?? null;
       if (!pull) {
         continue;
       }
+      const usingSynthetic = !realPull;
 
       const state = GitHubPrResolver.deriveState(pull);
       const isLive = state === 'open' || state === 'draft';
@@ -54,16 +76,35 @@ export class GitHubPrResolver {
       const headMatches = pull.head.sha === branch.headSha;
       const baseMatches = expectedBase === null || pull.base.ref === expectedBase;
 
-      result.set(branch.ref, {
+      let isInSync = isLive ? headMatches && baseMatches : true;
+
+      if (isLive && expectation) {
+        const expectationHeadOk = pull.head.sha === expectation.expectedHeadSha;
+        const expectationBaseOk =
+          expectation.expectedBaseRef === null ||
+          pull.base.ref === expectation.expectedBaseRef;
+        // An expectation is only satisfied once the REAL list reflects it.
+        // While we're still rendering from a synthetic payload, the propagation
+        // loop should keep refetching.
+        if (!usingSynthetic && expectationHeadOk && expectationBaseOk) {
+          satisfiedExpectations.add(branch.ref);
+        } else {
+          // GitHub hasn't propagated our just-pushed state yet. Trust local
+          // truth: render as in-sync while the propagation loop keeps refetching.
+          isInSync = true;
+        }
+      }
+
+      prs.set(branch.ref, {
         number: pull.number,
         url: pull.html_url,
         state,
-        isInSync: isLive ? headMatches && baseMatches : true,
+        isInSync,
         baseRef: pull.base.ref,
       });
     }
 
-    return result;
+    return { prs, satisfiedExpectations };
   }
 
   private static bestPullByBranchName(
