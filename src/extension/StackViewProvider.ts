@@ -435,7 +435,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
     const existing = new Set((await git.listLocalBranches()).map((b) => b.name));
     const branchName = BranchNamingUtils.generate(existing);
-    const message = inputMessage || `wip: ${branchName}`;
+    const message = inputMessage || `chore: wip ${branchName}`;
 
     await git.createAndCheckoutBranch(branchName);
     await git.commitChanges(message);
