@@ -1,19 +1,23 @@
-import { WORKTREE_ANIMALS } from './worktreeNaming';
+import { WORKTREE_CITIES } from './worktreeNaming';
 
 export class BranchNamingUtils {
   static generate(taken: ReadonlySet<string>): string {
     for (let attempt = 0; attempt < 50; attempt++) {
-      const candidate = `${randomAnimal()}-${randomHex(4)}`;
+      const candidate = `${randomCity()}-${randomHex(4)}`;
       if (!taken.has(candidate)) {
         return candidate;
       }
     }
-    return `${randomAnimal()}-${Date.now().toString(16)}`;
+    return `${randomCity()}-${Date.now().toString(16)}`;
+  }
+
+  static wipCommitMessage(branchName: string): string {
+    return `chore: wip ${branchName}`;
   }
 }
 
-function randomAnimal(): string {
-  return WORKTREE_ANIMALS[Math.floor(Math.random() * WORKTREE_ANIMALS.length)];
+function randomCity(): string {
+  return WORKTREE_CITIES[Math.floor(Math.random() * WORKTREE_CITIES.length)];
 }
 
 function randomHex(length: number): string {

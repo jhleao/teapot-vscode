@@ -435,7 +435,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
     const existing = new Set((await git.listLocalBranches()).map((b) => b.name));
     const branchName = BranchNamingUtils.generate(existing);
-    const message = inputMessage || `chore: wip ${branchName}`;
+    const message = inputMessage || BranchNamingUtils.wipCommitMessage(branchName);
 
     await git.createAndCheckoutBranch(branchName);
     await git.commitChanges(message);
@@ -730,7 +730,10 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     const existing = new Set((await git.listLocalBranches()).map((b) => b.name));
     const branchName = BranchNamingUtils.generate(existing);
 
-    const newSha = await git.createEmptyCommitOnTop('HEAD', 'chore: wip');
+    const newSha = await git.createEmptyCommitOnTop(
+      'HEAD',
+      BranchNamingUtils.wipCommitMessage(branchName)
+    );
     await git.createBranchAt(branchName, newSha);
     await git.checkout(branchName);
 
@@ -1290,8 +1293,8 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     await mkdir(worktreesDir, { recursive: true });
 
     const taken = await readExistingEntries(worktreesDir);
-    const animal = WorktreeNamingUtils.pickAnimal(taken);
-    const worktreePath = join(worktreesDir, animal);
+    const city = WorktreeNamingUtils.pickCity(taken);
+    const worktreePath = join(worktreesDir, city);
     const color = WorktreeNamingUtils.pickColor();
 
     await git.addWorktree(worktreePath, branchRef);
@@ -1299,7 +1302,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
     await this.refresh();
     void vscode.window.showInformationMessage(
-      `Created worktree "${animal}" for "${branchRef}"`
+      `Created worktree "${city}" for "${branchRef}"`
     );
   }
 
