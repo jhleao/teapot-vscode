@@ -57,7 +57,7 @@ export interface RowModel {
   branchName: string;
   lane: number;
   laneColor: string;
-  passThrough: RowLane[];
+  passThrough: readonly RowLane[];
   parentLane?: number;
   commit?: RowCommit;
   isCurrent: boolean;
