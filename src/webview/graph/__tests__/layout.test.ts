@@ -331,6 +331,188 @@ describe('layoutRows', () => {
     expect(branchTips[1]).toMatchObject({ branchName: 'zzz-feature', isCurrent: true });
   });
 
+  it('orders root stacks by divergence time, not head time, so new commits do not reshuffle stacks', () => {
+    // alpha diverged at t=10 and has a head at t=20. bravo diverged later at
+    // t=15 but its head is older at t=12. Ordering by head time would put
+    // alpha first; ordering by divergence time (the stable key) puts bravo
+    // first. Locks in that the sort is head-time independent — the same
+    // property that stops stacks from jumping when a user adds a commit.
+    const state: StackState = {
+      branches: [
+        {
+          ref: 'main',
+          headSha: 'm1',
+          baseSha: 'm1',
+          parentRef: null,
+          childRefs: ['alpha-feature', 'bravo-feature'],
+          commits: [{ sha: 'm1', message: 'main', author: 'dev', timeMs: 0, parentSha: '' }],
+          isTrunk: true,
+          isRemote: false,
+          isCurrent: false,
+          hasUncommittedChanges: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'alpha-feature',
+          headSha: 'a2',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: [],
+          commits: [
+            { sha: 'a2', message: 'A tip', author: 'dev', timeMs: 20, parentSha: 'a1' },
+            { sha: 'a1', message: 'A base', author: 'dev', timeMs: 10, parentSha: 'm1' },
+          ],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: false,
+          hasUncommittedChanges: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'bravo-feature',
+          headSha: 'b2',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: [],
+          commits: [
+            { sha: 'b2', message: 'B tip', author: 'dev', timeMs: 12, parentSha: 'b1' },
+            { sha: 'b1', message: 'B base', author: 'dev', timeMs: 15, parentSha: 'm1' },
+          ],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: false,
+          hasUncommittedChanges: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+      ],
+      trunk: 'main',
+      current: 'alpha-feature',
+      repoRoot: '/repo',
+      error: null,
+      pendingRebase: null,
+      activeRebase: null,
+    };
+
+    const rows = layoutRows(state);
+    const branchTips = rows.filter((row) => row.kind === 'commit' && row.isBranchTip);
+
+    expect(branchTips[0]).toMatchObject({ branchName: 'bravo-feature' });
+    expect(branchTips[1]).toMatchObject({ branchName: 'alpha-feature' });
+  });
+
+  it('keeps a root stack in place when a fresh sibling is added under it', () => {
+    // Real-world scenario: stackA is the topmost stack (single child above
+    // its root), stackB is a plain stack below. User triggers "New Working
+    // Commit" on stackA's root, creating a second sibling child under
+    // stackA's root. That flips stackA's root into a sibling-spinoff host.
+    // The fix asserts the stack does NOT sink — its position is keyed on
+    // the root's own divergence time, not on subtree shape.
+    const state: StackState = {
+      branches: [
+        {
+          ref: 'main',
+          headSha: 'm1',
+          baseSha: 'm1',
+          parentRef: null,
+          childRefs: ['stackA-root', 'stackB-root'],
+          commits: [{ sha: 'm1', message: 'main', author: 'dev', timeMs: 0, parentSha: '' }],
+          isTrunk: true,
+          isRemote: false,
+          isCurrent: false,
+          hasUncommittedChanges: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'stackA-root',
+          headSha: 'a1',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: ['stackA-feature', 'stackA-wip'],
+          commits: [{ sha: 'a1', message: 'A root', author: 'dev', timeMs: 100, parentSha: 'm1' }],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: false,
+          hasUncommittedChanges: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'stackA-feature',
+          headSha: 'af1',
+          baseSha: 'a1',
+          parentRef: 'stackA-root',
+          childRefs: [],
+          commits: [{ sha: 'af1', message: 'A feature', author: 'dev', timeMs: 110, parentSha: 'a1' }],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: false,
+          hasUncommittedChanges: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'stackA-wip',
+          headSha: 'aw1',
+          baseSha: 'a1',
+          parentRef: 'stackA-root',
+          childRefs: [],
+          commits: [{ sha: 'aw1', message: 'chore: wip', author: 'dev', timeMs: 999, parentSha: 'a1' }],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: true,
+          hasUncommittedChanges: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+        {
+          ref: 'stackB-root',
+          headSha: 'b1',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: [],
+          commits: [{ sha: 'b1', message: 'B root', author: 'dev', timeMs: 50, parentSha: 'm1' }],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: false,
+          hasUncommittedChanges: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null,
+        },
+      ],
+      trunk: 'main',
+      current: 'stackA-wip',
+      repoRoot: '/repo',
+      error: null,
+      pendingRebase: null,
+      activeRebase: null,
+    };
+
+    const rows = layoutRows(state);
+    const tipOrder = rows
+      .filter((r) => r.kind === 'commit' && r.isBranchTip)
+      .map((r) => r.branchName);
+
+    // stackA (divergence=100) renders above stackB (divergence=50) — and
+    // critically, stackA-root still comes before stackB-root even though
+    // stackA-root now hosts a sibling cascade (stackA-feature + stackA-wip).
+    const stackARootIndex = tipOrder.indexOf('stackA-root');
+    const stackBRootIndex = tipOrder.indexOf('stackB-root');
+    expect(stackARootIndex).toBeGreaterThanOrEqual(0);
+    expect(stackBRootIndex).toBeGreaterThan(stackARootIndex);
+  });
+
   it(
     'anchors direct child branches at the matching trunk commit instead of hoisting them above trunk',
     () => {

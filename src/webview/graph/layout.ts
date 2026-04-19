@@ -237,7 +237,6 @@ function sortChildRefs(
   childRefs: string[],
   branchesByRef: Map<string, StackBranch>,
   commitTimesBySha: ReadonlyMap<string, number>,
-  spinoffHostAncestors?: ReadonlySet<string>,
   coLocatedSpinoffPrimaries?: ReadonlyMap<string, string>
 ): string[] {
   // Members of a co-located spin-off group (primary + victims): primary
@@ -260,49 +259,14 @@ function sortChildRefs(
       const leftBranch = branchesByRef.get(left);
       const rightBranch = branchesByRef.get(right);
       const timeOrder =
-        getBranchHeadTime(leftBranch, commitTimesBySha) -
-        getBranchHeadTime(rightBranch, commitTimesBySha);
+        getBranchDivergenceTime(leftBranch, commitTimesBySha) -
+        getBranchDivergenceTime(rightBranch, commitTimesBySha);
       if (timeOrder !== 0) return timeOrder;
       return left.localeCompare(right);
     }
 
-    if (spinoffHostAncestors) {
-      const leftHosts = spinoffHostAncestors.has(left) ? 1 : 0;
-      const rightHosts = spinoffHostAncestors.has(right) ? 1 : 0;
-      if (leftHosts !== rightHosts) {
-        return leftHosts - rightHosts;
-      }
-    }
     return compareBranchRefsForLayout(left, right, branchesByRef, commitTimesBySha);
   });
-}
-
-// Every branch that has a reattached spin-off in its subtree — the primary
-// itself plus every ancestor up to the root. Used to push those branches to
-// the end of their sibling list so the spin-off cascade renders below any
-// plain peers.
-function collectSpinoffHostAncestors(
-  branchesByRef: ReadonlyMap<string, StackBranch>,
-  reattachedSpinoffs: ReadonlyMap<string, SpinoffAttachment>,
-  coLocatedSpinoffPrimaries: ReadonlyMap<string, string>
-): Set<string> {
-  const hosts = new Set<string>();
-  const primaryRefs: string[] = [
-    ...[...reattachedSpinoffs.values()].map((v) => v.primaryRef),
-    ...coLocatedSpinoffPrimaries.values(),
-  ];
-  for (const primaryRef of primaryRefs) {
-    // The primary itself is a "host" in the sibling-group sense, but we want
-    // it emitted FIRST at its own parent's commit so its spin-offs render
-    // below it. Only ancestors of the primary (laks, main, …) get flagged
-    // for the "spinoff-heavy subtree goes last" sort.
-    let current: string | null = branchesByRef.get(primaryRef)?.parentRef ?? null;
-    while (current && !hosts.has(current)) {
-      hosts.add(current);
-      current = branchesByRef.get(current)?.parentRef ?? null;
-    }
-  }
-  return hosts;
 }
 
 function createLayoutContext(branches: StackBranch[]): LayoutContext {
@@ -312,19 +276,13 @@ function createLayoutContext(branches: StackBranch[]): LayoutContext {
     planSameShaCollapse(branches);
   const { reattachedSpinoffs, coLocatedSpinoffPrimaries, droppedCommitShasByBranch } =
     planSiblingSpinoffs(branches, branchesByRef, commitTimesBySha, collapsedBranchRefs);
-  const spinoffHostAncestors = collectSpinoffHostAncestors(
-    branchesByRef,
-    reattachedSpinoffs,
-    coLocatedSpinoffPrimaries
-  );
   const childRefsByParentAndBase = childRefsByParentAndBaseIndex(
     branches,
     branchesByRef,
     commitTimesBySha,
     primaryByCollapsed,
     reattachedSpinoffs,
-    coLocatedSpinoffPrimaries,
-    spinoffHostAncestors
+    coLocatedSpinoffPrimaries
   );
   const laneByRef = computeLaneByRef(
     branches,
@@ -392,14 +350,19 @@ function planSiblingSpinoffs(
   for (const group of groupsByParentBase.values()) {
     if (group.length < 2) continue;
 
-    const sortedRefs = sortChildRefs(
-      group.map((b) => b.ref),
-      branchesByRef,
-      commitTimesBySha
-    );
-    const primaryRef = sortedRefs[sortedRefs.length - 1];
-    const primary = branchesByRef.get(primaryRef);
+    // Primary = the sibling whose tip was written longest ago. That branch
+    // owns the shared spine that reattaching spin-offs curve back to. Kept
+    // separate from the display sort (which uses divergence time for
+    // stability) because primary status hinges on which sibling is the
+    // "oldest settled" one, not on display order.
+    const primary = [...group].sort((a, b) => {
+      const headOrder =
+        getBranchHeadTime(a, commitTimesBySha) - getBranchHeadTime(b, commitTimesBySha);
+      if (headOrder !== 0) return headOrder;
+      return a.ref.localeCompare(b.ref);
+    })[0];
     if (!primary) continue;
+    const primaryRef = primary.ref;
 
     // Per-sibling: count trailing commits that this non-primary shares with
     // the primary, walking both from the tail (oldest-first). When they share
@@ -581,8 +544,7 @@ function childRefsByParentAndBaseIndex(
   commitTimesBySha: ReadonlyMap<string, number>,
   primaryByCollapsed: ReadonlyMap<string, string>,
   reattachedSpinoffs: ReadonlyMap<string, SpinoffAttachment>,
-  coLocatedSpinoffPrimaries: ReadonlyMap<string, string>,
-  spinoffHostAncestors: ReadonlySet<string>
+  coLocatedSpinoffPrimaries: ReadonlyMap<string, string>
 ): Map<string, ChildRefsByBaseSha> {
   const childRefsByParentAndBase = new Map<string, ChildRefsByBaseSha>();
 
@@ -624,7 +586,6 @@ function childRefsByParentAndBaseIndex(
           childRefs,
           branchesByRef,
           commitTimesBySha,
-          spinoffHostAncestors,
           coLocatedSpinoffPrimaries
         )
       );
@@ -697,14 +658,11 @@ function compareBranchRefsForLayout(
     return trunkOrder;
   }
 
-  const baseTimeOrder = getBranchBaseTime(right, commitTimesBySha) - getBranchBaseTime(left, commitTimesBySha);
-  if (baseTimeOrder !== 0) {
-    return baseTimeOrder;
-  }
-
-  const headTimeOrder = getBranchHeadTime(right, commitTimesBySha) - getBranchHeadTime(left, commitTimesBySha);
-  if (headTimeOrder !== 0) {
-    return headTimeOrder;
+  const divergenceOrder =
+    getBranchDivergenceTime(right, commitTimesBySha) -
+    getBranchDivergenceTime(left, commitTimesBySha);
+  if (divergenceOrder !== 0) {
+    return divergenceOrder;
   }
 
   return leftRef.localeCompare(rightRef);
@@ -732,6 +690,23 @@ function getBranchHeadTime(
   }
 
   return commitTimesBySha.get(branch.headSha) ?? branch.commits[0]?.timeMs ?? 0;
+}
+
+// Time of the branch's oldest own commit — the divergence point. Unlike head
+// or base time, this is frozen once the branch exists: new commits on the tip
+// don't shift it, so sorting by it keeps stacks in place as the user works.
+function getBranchDivergenceTime(
+  branch: StackBranch | undefined,
+  commitTimesBySha: ReadonlyMap<string, number>
+): number {
+  if (!branch) {
+    return 0;
+  }
+  const first = branch.commits[branch.commits.length - 1];
+  if (!first) {
+    return getBranchBaseTime(branch, commitTimesBySha);
+  }
+  return commitTimesBySha.get(first.sha) ?? first.timeMs ?? 0;
 }
 
 function getRootRefs(
