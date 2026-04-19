@@ -44,12 +44,6 @@ export function activate(context: vscode.ExtensionContext): void {
         provider.amendCommitMessage(ctx.commitSha, ctx.currentMessage);
       }
     ),
-    vscode.commands.registerCommand(
-      'teapot.createBranchAtCommit',
-      (ctx: { commitSha: string }) => {
-        provider.createBranchAtCommit(ctx.commitSha);
-      }
-    ),
     vscode.commands.registerCommand('teapot.inspectCommit', (ctx: { commitSha: string }) => {
       void provider.inspectCommit(ctx.commitSha);
     }),

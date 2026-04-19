@@ -175,7 +175,6 @@ describe('buildCommitRowContext', () => {
         commitSha: 'abc1234',
         currentMessage: 'Initial commit',
         isHead: true,
-        canCreateBranchAtCommit: false,
       })
     ).toEqual({
       webviewSection: 'commit-row',
@@ -183,7 +182,6 @@ describe('buildCommitRowContext', () => {
       commitSha: 'abc1234',
       currentMessage: 'Initial commit',
       teapotCommitIsHead: true,
-      teapotCanCreateBranchAtCommit: false,
     });
   });
 
@@ -193,9 +191,8 @@ describe('buildCommitRowContext', () => {
         commitSha: 'def5678',
         currentMessage: 'Old',
         isHead: false,
-        canCreateBranchAtCommit: true,
       })
-    ).toMatchObject({ teapotCommitIsHead: false, teapotCanCreateBranchAtCommit: true });
+    ).toMatchObject({ teapotCommitIsHead: false });
   });
 });
 

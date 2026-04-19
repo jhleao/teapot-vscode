@@ -224,24 +224,19 @@
           "group": "9_modification@2"
         },
         {
-          "command": "teapot.inspectCommit",
-          "when": "webviewId == 'teapot.stackView' && webviewSection == 'commit-row'",
-          "group": "0_primary@0"
-        },
-        {
-          "command": "teapot.createBranchAtCommit",
-          "when": "webviewId == 'teapot.stackView' && webviewSection == 'commit-row' && teapotCanCreateBranchAtCommit",
-          "group": "1_modification@0"
-        },
-        {
           "command": "teapot.amendCommitMessage",
           "when": "webviewId == 'teapot.stackView' && webviewSection == 'commit-row' && teapotCommitIsHead",
-          "group": "1_modification@1"
+          "group": "0_commit@1"
+        },
+        {
+          "command": "teapot.inspectCommit",
+          "when": "webviewId == 'teapot.stackView' && webviewSection == 'commit-row'",
+          "group": "0_commit@2"
         },
         {
           "command": "teapot.copyCommitSha",
           "when": "webviewId == 'teapot.stackView' && webviewSection == 'commit-row'",
-          "group": "9_cutcopypaste@1"
+          "group": "0_commit@3"
         },
         {
           "command": "teapot.copyBranchName",
@@ -278,10 +273,6 @@
         },
         {
           "command": "teapot.amendCommitMessage",
-          "when": "false"
-        },
-        {
-          "command": "teapot.createBranchAtCommit",
           "when": "false"
         },
         {
