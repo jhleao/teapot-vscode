@@ -160,12 +160,12 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     this.enqueueOperation(() => this.performCreateWorkingCommit());
   }
 
-  branchAndCommit(): void {
-    this.enqueueOperation(() => this.performBranchAndCommit());
+  branchAndCommit(options: { stageAll?: boolean } = {}): void {
+    this.enqueueOperation(() => this.performBranchAndCommit(options));
   }
 
-  amendAndRebase(): void {
-    this.enqueueOperation(() => this.performAmendAndRebase());
+  amendAndRebase(options: { stageAll?: boolean } = {}): void {
+    this.enqueueOperation(() => this.performAmendAndRebase(options));
   }
 
   pullTrunk(): void {
@@ -253,10 +253,10 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         this.createBranchAtCommit(message.commitSha);
         return;
       case 'amendAndRebase':
-        this.amendAndRebase();
+        this.amendAndRebase({ stageAll: message.stageAll });
         return;
       case 'branchAndCommit':
-        this.branchAndCommit();
+        this.branchAndCommit({ stageAll: message.stageAll });
         return;
       case 'pullTrunk':
         await this.performPullTrunk();
@@ -405,10 +405,16 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     }
   }
 
-  private async performBranchAndCommit(): Promise<void> {
+  private async performBranchAndCommit(
+    options: { stageAll?: boolean } = {}
+  ): Promise<void> {
     const git = await this.openGit();
     if (!git) {
       return;
+    }
+
+    if (options.stageAll && (await git.hasAnyChanges())) {
+      await git.stageAll();
     }
 
     if (!(await git.hasStagedChanges())) {
@@ -416,8 +422,8 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       return;
     }
 
-    const message = (await this.readScmInputValue(git.getRepoRoot())).trim();
-    if (!message) {
+    const inputMessage = (await this.readScmInputValue(git.getRepoRoot())).trim();
+    if (!inputMessage && !options.stageAll) {
       void vscode.window.showErrorMessage(
         'Enter a commit message in the Source Control input box first.'
       );
@@ -426,6 +432,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
     const existing = new Set((await git.listLocalBranches()).map((b) => b.name));
     const branchName = BranchNamingUtils.generate(existing);
+    const message = inputMessage || `wip: ${branchName}`;
 
     await git.createAndCheckoutBranch(branchName);
     await git.commitChanges(message);
@@ -435,7 +442,9 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     await this.refresh();
   }
 
-  private async performAmendAndRebase(): Promise<void> {
+  private async performAmendAndRebase(
+    options: { stageAll?: boolean } = {}
+  ): Promise<void> {
     const workspaceRoot = this.getWorkspaceRoot();
     if (!workspaceRoot) {
       void vscode.window.showErrorMessage('No workspace folder open');
@@ -451,6 +460,10 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     if (!(await git.hasAnyChanges())) {
       void vscode.window.showInformationMessage('No changes to amend.');
       return;
+    }
+
+    if (options.stageAll) {
+      await git.stageAll();
     }
 
     const state = await this.loadGitOnlyState(workspaceRoot);

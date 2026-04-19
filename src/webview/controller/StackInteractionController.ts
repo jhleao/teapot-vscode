@@ -202,8 +202,8 @@ export class StackInteractionController {
       event.stopPropagation();
       this.postMessage(
         action === 'amend-and-rebase'
-          ? { type: 'amendAndRebase' }
-          : { type: 'branchAndCommit' }
+          ? { type: 'amendAndRebase', stageAll: true }
+          : { type: 'branchAndCommit', stageAll: true }
       );
       return;
     }

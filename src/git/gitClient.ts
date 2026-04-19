@@ -218,6 +218,10 @@ export class GitClient {
     await this.run(['checkout', '-b', name]);
   }
 
+  async stageAll(): Promise<void> {
+    await this.run(['add', '-A']);
+  }
+
   async hasStagedChanges(): Promise<boolean> {
     try {
       await this.run(['diff', '--cached', '--quiet']);
