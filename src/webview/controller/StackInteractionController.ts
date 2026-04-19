@@ -36,6 +36,7 @@ type RebaseAction =
   | 'abort-rebase';
 type ForcePushAction = 'force-push-branch';
 type CreateBranchAction = 'create-branch-at-commit';
+type CleanUpAction = 'clean-up-branch';
 type UncommittedAction = 'amend-and-rebase' | 'branch-and-commit';
 type PullTrunkAction = 'pull-trunk';
 
@@ -204,6 +205,16 @@ export class StackInteractionController {
         event.preventDefault();
         event.stopPropagation();
         this.postMessage({ type: 'createBranchAtCommit', commitSha });
+      }
+      return;
+    }
+
+    if (isCleanUpAction(action)) {
+      const branchRef = actionButton?.dataset.branchRef;
+      if (branchRef) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.postMessage({ type: 'deleteBranch', branchRef });
       }
       return;
     }
@@ -518,6 +529,10 @@ function isForcePushAction(action: string | undefined): action is ForcePushActio
 
 function isCreateBranchAction(action: string | undefined): action is CreateBranchAction {
   return action === 'create-branch-at-commit';
+}
+
+function isCleanUpAction(action: string | undefined): action is CleanUpAction {
+  return action === 'clean-up-branch';
 }
 
 function isUncommittedAction(action: string | undefined): action is UncommittedAction {

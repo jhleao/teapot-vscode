@@ -44,6 +44,10 @@ export interface StackBranch {
   worktreePath: string | null;
   worktreePeacockColor: string | null;
   pullRequest: PullRequestInfo | null;
+  // True iff this branch's headSha is an ancestor of trunk's headSha — i.e.
+  // its commits are already in trunk's history (fast-forward merge case).
+  // Squash/rebase merges do NOT set this; detect those via pullRequest.state.
+  isMergedIntoTrunk: boolean;
 }
 
 export interface RebaseIntentNode {
@@ -128,6 +132,7 @@ export type WebviewToHostMessage =
   | { type: 'continueRebase' }
   | { type: 'abortRebase' }
   | { type: 'checkoutBranch'; branchRef: string }
+  | { type: 'deleteBranch'; branchRef: string }
   | { type: 'pickBranchAction'; branchRefs: string[] }
   | { type: 'forcePushBranch'; branchRef: string }
   | { type: 'createPullRequest'; branchRef: string }

@@ -39,6 +39,11 @@ interface LayoutContext {
   // commit renders only once, under the primary.
   droppedCommitShasByBranch: Map<string, Set<string>>;
   laneByRef: Map<string, number>;
+  // Non-trunk branches whose headSha matches an inner trunk commit SHA (not
+  // trunk's tip) are collapsed into that trunk commit's row, shown as a ref
+  // label alongside the commit instead of their own empty lane row. Keyed by
+  // trunk commit SHA → list of collapsed branch refs.
+  pointerBranchRefsByTrunkSha: Map<string, string[]>;
 }
 
 export interface RowLane {
@@ -72,6 +77,10 @@ export interface RowModel {
   worktreePeacockColor: string | null;
   pullRequest: PullRequestInfo | null;
   additionalBranchRefs: string[];
+  // Refs to non-trunk branches that collapse onto this row because their
+  // headSha matches this commit's SHA (and they have no unique commits).
+  // Populated only on trunk commit rows; empty elsewhere.
+  pointerBranchRefs: string[];
   canCreateBranchAtCommit: boolean;
 }
 
@@ -82,9 +91,11 @@ export function layoutRows(state: StackState): RowModel[] {
     childRefsByParentAndBase,
     additionalRefsByPrimary,
     collapsedBranchRefs,
+    primaryByCollapsed,
     reattachedSpinoffs,
     droppedCommitShasByBranch,
     laneByRef,
+    pointerBranchRefsByTrunkSha,
   } = createLayoutContext(state.branches);
   const laneOf = (branchRef: string): number => {
     const cached = laneByRef.get(branchRef);
@@ -122,7 +133,14 @@ export function layoutRows(state: StackState): RowModel[] {
     const lane = laneOf(branchRef);
     const laneColor = colorOf(branch.ref);
     const spinoffAttachment = reattachedSpinoffs.get(branch.ref);
-    const effectiveParentRef = spinoffAttachment?.primaryRef ?? branch.parentRef;
+    // Follow primaryByCollapsed so that a branch whose topology parent was
+    // collapsed (e.g. a pointer branch) draws its lane curve back to the
+    // surviving primary (trunk) rather than to a ref that no longer renders.
+    const collapsedRedirect = branch.parentRef
+      ? primaryByCollapsed.get(branch.parentRef)
+      : undefined;
+    const effectiveParentRef =
+      spinoffAttachment?.primaryRef ?? collapsedRedirect ?? branch.parentRef;
     const parentLane = effectiveParentRef ? laneOf(effectiveParentRef) : undefined;
     const willRenderBranchHeader = parentLane !== undefined && parentLane !== lane;
     // passThrough shows ancestor-branch spines that remain continuous across
@@ -158,6 +176,7 @@ export function layoutRows(state: StackState): RowModel[] {
         worktreePeacockColor: branch.worktreePeacockColor,
         pullRequest: branch.pullRequest,
         additionalBranchRefs: additionalRefsByPrimary.get(branch.ref) ?? [],
+        pointerBranchRefs: [],
         canCreateBranchAtCommit: false,
       });
     }
@@ -197,6 +216,9 @@ export function layoutRows(state: StackState): RowModel[] {
         additionalBranchRefs: isBranchTip
           ? additionalRefsByPrimary.get(branch.ref) ?? []
           : [],
+        pointerBranchRefs: branch.isTrunk
+          ? pointerBranchRefsByTrunkSha.get(commit.sha) ?? []
+          : [],
         canCreateBranchAtCommit: !isBranchTip && !branch.isTrunk,
       });
     }
@@ -221,6 +243,7 @@ export function layoutRows(state: StackState): RowModel[] {
         worktreePeacockColor: null,
         pullRequest: null,
         additionalBranchRefs: [],
+        pointerBranchRefs: [],
         canCreateBranchAtCommit: false,
       });
     }
@@ -274,6 +297,20 @@ function createLayoutContext(branches: StackBranch[]): LayoutContext {
   const commitTimesBySha = commitTimesByShaIndex(branches);
   const { additionalRefsByPrimary, collapsedBranchRefs, primaryByCollapsed } =
     planSameShaCollapse(branches);
+  const { pointerBranchRefsByTrunkSha, collapsedPointers } = planPointerBranches(
+    branches,
+    collapsedBranchRefs
+  );
+  const trunkForCollapse = branches.find((b) => b.isTrunk);
+  for (const ref of collapsedPointers) {
+    collapsedBranchRefs.add(ref);
+    // Re-parent any descendants of the collapsed pointer onto trunk so they
+    // still render. Without this, a topology-inferred child whose parent is
+    // the pointer branch would be stranded when the pointer collapses.
+    if (trunkForCollapse) {
+      primaryByCollapsed.set(ref, trunkForCollapse.ref);
+    }
+  }
   const { reattachedSpinoffs, coLocatedSpinoffPrimaries, droppedCommitShasByBranch } =
     planSiblingSpinoffs(branches, branchesByRef, commitTimesBySha, collapsedBranchRefs);
   const childRefsByParentAndBase = childRefsByParentAndBaseIndex(
@@ -302,7 +339,51 @@ function createLayoutContext(branches: StackBranch[]): LayoutContext {
     coLocatedSpinoffPrimaries,
     droppedCommitShasByBranch,
     laneByRef,
+    pointerBranchRefsByTrunkSha,
   };
+}
+
+// A "pointer branch" is a non-trunk branch whose commits are already in
+// trunk's history (branch.isMergedIntoTrunk), with its headSha matching an
+// inner trunk commit (not trunk's tip — the tip case is covered by
+// planSameShaCollapse). These branches have no unique work, so rendering
+// them on their own lane looks like a spurious spin-off. Collapsing them
+// onto the trunk commit row they point at renders the ref inline with that
+// commit, which is what users expect after a fast-forward merge.
+//
+// Branches merged via squash/rebase (GitHub rewrites the sha) have
+// isMergedIntoTrunk=false here because their headSha is not an ancestor of
+// trunk; those keep their own row and get a cleanup button at render time.
+function planPointerBranches(
+  branches: StackBranch[],
+  alreadyCollapsed: ReadonlySet<string>
+): {
+  pointerBranchRefsByTrunkSha: Map<string, string[]>;
+  collapsedPointers: Set<string>;
+} {
+  const pointerBranchRefsByTrunkSha = new Map<string, string[]>();
+  const collapsedPointers = new Set<string>();
+
+  const trunk = branches.find((branch) => branch.isTrunk);
+  if (!trunk) {
+    return { pointerBranchRefsByTrunkSha, collapsedPointers };
+  }
+  const trunkCommitShas = new Set(trunk.commits.map((commit) => commit.sha));
+
+  for (const branch of branches) {
+    if (!branch.isMergedIntoTrunk) continue;
+    if (branch.isRemote || branch.isCurrent) continue;
+    if (alreadyCollapsed.has(branch.ref)) continue;
+    if (branch.headSha === trunk.headSha) continue; // handled by planSameShaCollapse
+    if (!trunkCommitShas.has(branch.headSha)) continue; // outside trunk window
+
+    const list = pointerBranchRefsByTrunkSha.get(branch.headSha) ?? [];
+    list.push(branch.ref);
+    pointerBranchRefsByTrunkSha.set(branch.headSha, list);
+    collapsedPointers.add(branch.ref);
+  }
+
+  return { pointerBranchRefsByTrunkSha, collapsedPointers };
 }
 
 // When two or more non-trunk sibling branches share parentRef + baseSha, they

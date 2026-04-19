@@ -43,7 +43,7 @@ describe('rebase intent helpers', () => {
       hasUncommittedChanges: false,
       worktreePath: null,
           worktreePeacockColor: null,
-          pullRequest: null,
+          pullRequest: null, isMergedIntoTrunk: false,
     });
 
     expect(createRebaseIntent(state, 'alias', 'm3')).toBeNull();
@@ -65,7 +65,7 @@ describe('rebase intent helpers', () => {
       hasUncommittedChanges: false,
       worktreePath: null,
       worktreePeacockColor: null,
-      pullRequest: null,
+      pullRequest: null, isMergedIntoTrunk: false,
     });
 
     const intent = createRebaseIntent(state, 'feature', 'm3');
@@ -110,7 +110,7 @@ function createState(): StackState {
         hasUncommittedChanges: false,
         worktreePath: null,
           worktreePeacockColor: null,
-          pullRequest: null,
+          pullRequest: null, isMergedIntoTrunk: false,
       },
       {
         ref: 'feature',
@@ -128,7 +128,7 @@ function createState(): StackState {
         hasUncommittedChanges: false,
         worktreePath: null,
           worktreePeacockColor: null,
-          pullRequest: null,
+          pullRequest: null, isMergedIntoTrunk: false,
       },
       {
         ref: 'fixup',
@@ -143,7 +143,7 @@ function createState(): StackState {
         hasUncommittedChanges: false,
         worktreePath: null,
           worktreePeacockColor: null,
-          pullRequest: null,
+          pullRequest: null, isMergedIntoTrunk: false,
       },
     ],
     trunk: 'main',

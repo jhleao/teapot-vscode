@@ -97,6 +97,15 @@ export class GitClient {
     }
   }
 
+  async isAncestor(candidate: string, descendant: string): Promise<boolean> {
+    try {
+      await this.run(['merge-base', '--is-ancestor', candidate, descendant]);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async countCommits(fromRef: string, toRef: string): Promise<number> {
     try {
       const stdout = await this.run(['rev-list', '--count', `${fromRef}..${toRef}`]);

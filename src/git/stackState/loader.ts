@@ -45,9 +45,15 @@ export class GitStackStateLoader {
         worktreePathByBranchRef
       );
 
+      const trunkHeadSha =
+        topology.find(({ branch }) => branch.name === trunkRef)?.branch.headSha ?? null;
+
       const stackBranches = await Promise.all(
         topology.map(async ({ branch, parentRef, parentHeadSha, baseSha }) => {
           const worktreePath = worktreePathByBranchRef.get(branch.name) ?? null;
+          const isTrunk = branch.name === trunkRef;
+          const isMergedIntoTrunk =
+            !isTrunk && !!trunkHeadSha && (await git.isAncestor(branch.headSha, trunkHeadSha));
 
           return createStackBranch({
             git,
@@ -64,6 +70,7 @@ export class GitStackStateLoader {
             worktreePeacockColor: worktreePath
               ? peacockColorByWorktreePath.get(worktreePath) ?? null
               : null,
+            isMergedIntoTrunk,
           });
         })
       );
@@ -130,6 +137,7 @@ async function createStackBranch(params: {
   trunkCommitLimit: number;
   worktreePath: string | null;
   worktreePeacockColor: string | null;
+  isMergedIntoTrunk: boolean;
 }): Promise<StackBranch> {
   const {
     git,
@@ -144,6 +152,7 @@ async function createStackBranch(params: {
     trunkCommitLimit,
     worktreePath,
     worktreePeacockColor,
+    isMergedIntoTrunk,
   } = params;
   const isCurrent = branch.name === currentBranchRef;
   const isTrunk = branch.name === trunkRef;
@@ -167,6 +176,7 @@ async function createStackBranch(params: {
     worktreePath,
     worktreePeacockColor,
     pullRequest: null,
+    isMergedIntoTrunk,
   };
 }
 

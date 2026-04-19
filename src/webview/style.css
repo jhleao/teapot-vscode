@@ -565,7 +565,8 @@ body {
   outline-offset: 1px;
 }
 
-.create-branch-at-commit {
+.create-branch-at-commit,
+.clean-up-branch {
   appearance: none;
   cursor: pointer;
   background: transparent;
@@ -584,7 +585,8 @@ body {
     border-color 120ms ease-out;
 }
 
-.create-branch-at-commit:hover {
+.create-branch-at-commit:hover,
+.clean-up-branch:hover {
   opacity: 1;
   color: var(--vscode-foreground);
   border-color: color-mix(
@@ -599,7 +601,8 @@ body {
   );
 }
 
-.create-branch-at-commit:focus-visible {
+.create-branch-at-commit:focus-visible,
+.clean-up-branch:focus-visible {
   opacity: 1;
   outline: 1px solid var(--vscode-focusBorder, #007fd4);
   outline-offset: 1px;

@@ -240,6 +240,9 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       case 'checkoutBranch':
         await this.performCheckoutBranch(message.branchRef);
         return;
+      case 'deleteBranch':
+        await this.performDeleteBranch(message.branchRef);
+        return;
       case 'pickBranchAction':
         await this.performPickBranchAction(message.branchRefs);
         return;

@@ -17,7 +17,7 @@ function createBranch(overrides: Partial<StackBranch>): StackBranch {
     hasUncommittedChanges: false,
     worktreePath: null,
     worktreePeacockColor: null,
-    pullRequest: null,
+    pullRequest: null, isMergedIntoTrunk: false,
     ...overrides,
   };
 }

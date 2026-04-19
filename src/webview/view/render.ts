@@ -74,6 +74,7 @@ export function renderStackView(
     canCreatePullRequestByBranch,
     pushPending,
     createPrPending,
+    branchesByRef,
     options,
   };
 
@@ -106,6 +107,7 @@ interface RowRenderContext {
   canCreatePullRequestByBranch: ReadonlyMap<string, boolean>;
   pushPending: ReadonlySet<string>;
   createPrPending: ReadonlySet<string>;
+  branchesByRef: ReadonlyMap<string, StackBranch>;
   options: RenderStackViewOptions;
 }
 
@@ -130,6 +132,21 @@ function isStackTipRow(row: RowModel): boolean {
     !row.isTrunkBranch &&
     !row.hasTop
   );
+}
+
+function isBranchMerged(branch: StackBranch): boolean {
+  return branch.isMergedIntoTrunk || branch.pullRequest?.state === 'merged';
+}
+
+function shouldShowCleanUpOnBranchTip(
+  row: RowModel,
+  branchesByRef: ReadonlyMap<string, StackBranch>
+): boolean {
+  if (row.kind !== 'commit' || !row.isBranchTip || row.isTrunkBranch) {
+    return false;
+  }
+  const branch = branchesByRef.get(row.branchName);
+  return !!branch && isBranchMerged(branch);
 }
 
 function createBlankSeparatorRow(tipRow: RowModel): HTMLElement {
@@ -373,6 +390,8 @@ function renderRow(
         row.additionalBranchRefs
       )
     );
+  } else if (row.pointerBranchRefs.length > 0) {
+    rowElement.append(createPointerBranchLabels(row.pointerBranchRefs));
   }
 
   if (row.kind === 'commit' && row.canCreateBranchAtCommit && row.commit) {
@@ -411,6 +430,12 @@ function renderRow(
         pendingAction: options.pendingAction,
       })
     );
+  }
+  if (shouldShowCleanUpOnBranchTip(row, context.branchesByRef)) {
+    rowElement.append(createCleanUpBranchButton(row.branchName));
+  }
+  for (const pointerRef of row.pointerBranchRefs) {
+    rowElement.append(createCleanUpBranchButton(pointerRef));
   }
   return rowElement;
 }
@@ -523,6 +548,18 @@ function createBranchAtCommitButton(commitSha: string): HTMLButtonElement {
   return button;
 }
 
+function createCleanUpBranchButton(branchRef: string): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.className = 'clean-up-branch';
+  button.type = 'button';
+  button.dataset.action = 'clean-up-branch';
+  button.dataset.branchRef = branchRef;
+  button.title = `Delete merged branch "${branchRef}"`;
+  button.setAttribute('aria-label', `Clean up ${branchRef}`);
+  button.textContent = 'Clean up';
+  return button;
+}
+
 function createPullTrunkRow(trunkRef: string, isPending: boolean): HTMLElement {
   const row = document.createElement('div');
   row.className = 'pull-trunk-row';
@@ -592,6 +629,15 @@ function createPullIcon(): SVGElement {
 export function isPullRequestOutOfSync(pullRequest: PullRequestInfo): boolean {
   const isLive = pullRequest.state === 'open' || pullRequest.state === 'draft';
   return isLive && !pullRequest.isInSync;
+}
+
+function createPointerBranchLabels(pointerRefs: readonly string[]): HTMLElement {
+  const container = document.createElement('div');
+  container.className = 'label-container';
+  for (const ref of pointerRefs) {
+    container.append(createBranchLabel(ref, false, false, false, false));
+  }
+  return container;
 }
 
 function createRowLabels(
