@@ -941,6 +941,36 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       return;
     }
 
+    const draftPick = await vscode.window.showQuickPick(
+      [
+        { label: 'Open', description: 'Create a ready-for-review pull request', draft: false },
+        { label: 'Draft', description: 'Create a draft pull request', draft: true },
+      ],
+      { placeHolder: 'Create pull request as…' }
+    );
+    if (!draftPick) {
+      return;
+    }
+
+    const defaultTitle = branch.commits[0]?.message.trim() || branch.ref;
+    const titleInput = await vscode.window.showInputBox({
+      prompt: 'Pull request title',
+      placeHolder: 'Leave empty to use the commit message',
+    });
+    if (titleInput === undefined) {
+      return;
+    }
+    const title = titleInput.trim() || defaultTitle;
+
+    const bodyInput = await vscode.window.showInputBox({
+      prompt: 'Pull request description (optional)',
+      placeHolder: 'Leave empty for no description',
+    });
+    if (bodyInput === undefined) {
+      return;
+    }
+    const body = bodyInput.trim() || undefined;
+
     await this.addPendingOp('create-pr', branchRef);
     try {
       try {
@@ -960,12 +990,13 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       }
 
       try {
-        const title = branch.commits[0]?.message.trim() || branch.ref;
         const client = new GitHubClient(session.accessToken);
         const pull = await client.createPullRequest(repo.owner, repo.repo, {
           title,
           head: branch.ref,
           base: baseRef,
+          ...(body ? { body } : {}),
+          draft: draftPick.draft,
         });
 
         // Seed the synthetic PR so the UI renders it immediately, even while

@@ -22,6 +22,7 @@ export interface CreateGitHubPullRequestOptions {
   head: string;
   base: string;
   body?: string;
+  draft?: boolean;
 }
 
 export interface GitHubPullListModifiedResponse {

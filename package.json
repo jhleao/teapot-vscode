@@ -92,11 +92,6 @@
         "category": "Teapot"
       },
       {
-        "command": "teapot.createBranchAtCommit",
-        "title": "Create Branch Here",
-        "category": "Teapot"
-      },
-      {
         "command": "teapot.inspectCommit",
         "title": "Inspect Commit",
         "category": "Teapot"
@@ -209,29 +204,24 @@
       ],
       "webview/context": [
         {
-          "command": "teapot.checkoutBranch",
-          "when": "webviewId == 'teapot.stackView' && webviewSection == 'branch-badge' && !teapotBranchIsCurrent",
-          "group": "0_primary@1"
-        },
-        {
-          "command": "teapot.renameBranch",
-          "when": "webviewId == 'teapot.stackView' && webviewSection == 'branch-badge'",
-          "group": "1_modification@1"
-        },
-        {
-          "command": "teapot.deleteBranch",
-          "when": "webviewId == 'teapot.stackView' && webviewSection == 'branch-badge' && !teapotBranchProtected",
-          "group": "1_modification@2"
+          "command": "teapot.createPullRequest",
+          "when": "webviewId == 'teapot.stackView' && webviewSection == 'branch-badge' && teapot.gitHubSessionValid && teapotBranchCanCreatePullRequest",
+          "group": "0_pr@1"
         },
         {
           "command": "teapot.createWorktree",
           "when": "webviewId == 'teapot.stackView' && webviewSection == 'branch-badge' && !teapotBranchIsCurrent && !teapotBranchHasWorktree",
-          "group": "1_modification@3"
+          "group": "1_worktree@1"
         },
         {
-          "command": "teapot.createPullRequest",
-          "when": "webviewId == 'teapot.stackView' && webviewSection == 'branch-badge' && teapot.gitHubSessionValid && teapotBranchCanCreatePullRequest",
-          "group": "1_modification@4"
+          "command": "teapot.renameBranch",
+          "when": "webviewId == 'teapot.stackView' && webviewSection == 'branch-badge'",
+          "group": "9_modification@1"
+        },
+        {
+          "command": "teapot.deleteBranch",
+          "when": "webviewId == 'teapot.stackView' && webviewSection == 'branch-badge' && !teapotBranchProtected",
+          "group": "9_modification@2"
         },
         {
           "command": "teapot.inspectCommit",
@@ -256,7 +246,7 @@
         {
           "command": "teapot.copyBranchName",
           "when": "webviewId == 'teapot.stackView' && webviewSection == 'branch-badge'",
-          "group": "9_cutcopypaste@1"
+          "group": "9_modification@3"
         },
         {
           "command": "teapot.openWorktreeInNewWindow",
