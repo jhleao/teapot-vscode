@@ -20,6 +20,7 @@ export type PendingActionState =
 export interface RenderStackViewOptions {
   pendingAction: PendingActionState;
   pushPending?: ReadonlySet<string>;
+  pullTrunkPending?: boolean;
 }
 
 const EMPTY_ACTIVITY: GitHubActivity = { isFetching: false, pendingOps: [] };
@@ -58,11 +59,14 @@ export function renderStackView(
   const activity = state.githubActivity ?? EMPTY_ACTIVITY;
   const pushPending = new Set<string>(options.pushPending ?? []);
   const createPrPending = new Set<string>();
+  let pullTrunkPending = options.pullTrunkPending ?? false;
   for (const op of activity.pendingOps) {
     if (op.kind === 'push') {
       pushPending.add(op.branchRef);
     } else if (op.kind === 'create-pr') {
       createPrPending.add(op.branchRef);
+    } else if (op.kind === 'pull-trunk') {
+      pullTrunkPending = true;
     }
   }
   const rowContext: RowRenderContext = {
@@ -78,7 +82,7 @@ export function renderStackView(
   }
 
   if (state.trunk) {
-    fragment.append(createPullTrunkRow(state.trunk));
+    fragment.append(createPullTrunkRow(state.trunk, pullTrunkPending));
   }
 
   for (let i = 0; i < rows.length; i += 1) {
@@ -519,22 +523,45 @@ function createBranchAtCommitButton(commitSha: string): HTMLButtonElement {
   return button;
 }
 
-function createPullTrunkRow(trunkRef: string): HTMLElement {
+function createPullTrunkRow(trunkRef: string, isPending: boolean): HTMLElement {
   const row = document.createElement('div');
   row.className = 'pull-trunk-row';
 
   const button = document.createElement('button');
-  button.className = 'create-branch-at-commit pull-trunk-button';
+  button.className = `create-branch-at-commit pull-trunk-button${isPending ? ' loading' : ''}`;
   button.type = 'button';
   button.dataset.action = 'pull-trunk';
-  button.title = `Pull ${trunkRef} from origin`;
-  button.setAttribute('aria-label', `Pull ${trunkRef} from origin`);
-  button.append(createPullIcon());
+  if (isPending) {
+    button.disabled = true;
+    button.title = `Pulling ${trunkRef} from origin…`;
+    button.setAttribute('aria-label', `Pulling ${trunkRef} from origin`);
+    button.append(createPullTrunkSpinnerIcon());
+  } else {
+    button.title = `Pull ${trunkRef} from origin`;
+    button.setAttribute('aria-label', `Pull ${trunkRef} from origin`);
+    button.append(createPullIcon());
+  }
   const label = document.createElement('span');
-  label.textContent = 'git pull';
+  label.textContent = isPending ? 'pulling…' : 'git pull';
   button.append(label);
   row.append(button);
   return row;
+}
+
+function createPullTrunkSpinnerIcon(): SVGElement {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'pull-trunk-icon spinner');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.75');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+
+  const arc = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  arc.setAttribute('d', 'M14 8a6 6 0 1 1-6-6');
+  svg.append(arc);
+  return svg;
 }
 
 function createPullIcon(): SVGElement {

@@ -617,12 +617,39 @@ body {
   align-items: center;
   gap: 4px;
   transform: translateX(-11px);
+  opacity: 0.9;
+  color: color-mix(in srgb, var(--vscode-descriptionForeground) 100%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--vscode-descriptionForeground) 55%,
+    transparent
+  );
+}
+
+.pull-trunk-button:hover {
+  color: var(--vscode-foreground);
+  border-color: color-mix(
+    in srgb,
+    var(--vscode-descriptionForeground) 80%,
+    transparent
+  );
+}
+
+.pull-trunk-button.loading,
+.pull-trunk-button.loading:hover {
+  cursor: default;
+  opacity: 0.75;
 }
 
 .pull-trunk-icon {
   width: 10px;
   height: 10px;
   flex-shrink: 0;
+}
+
+.pull-trunk-icon.spinner {
+  animation: teapot-spin 0.9s linear infinite;
+  transform-origin: 50% 50%;
 }
 
 .empty {

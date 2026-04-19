@@ -18,7 +18,7 @@ export interface PullRequestInfo {
   baseRef: string;
 }
 
-export type GitHubPendingOpKind = 'push' | 'create-pr';
+export type GitHubPendingOpKind = 'push' | 'create-pr' | 'pull-trunk';
 
 export interface GitHubPendingOp {
   branchRef: string;

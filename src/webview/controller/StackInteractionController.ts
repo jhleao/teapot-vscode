@@ -49,6 +49,7 @@ export class StackInteractionController {
   private pendingAction: PendingActionState = null;
   private awaitingHostSync = false;
   private readonly optimisticPushPending = new Set<string>();
+  private optimisticPullTrunkPending = false;
 
   private readonly drag: DragSession = {
     pendingBranchRef: null,
@@ -83,6 +84,7 @@ export class StackInteractionController {
       this.pendingAction !== null ||
       this.drag.activeBranchRef !== null ||
       this.optimisticPushPending.size > 0 ||
+      this.optimisticPullTrunkPending ||
       !areStackStatesVisuallyEqual(this.renderedState, message.state);
 
     this.renderedState = message.state;
@@ -92,6 +94,7 @@ export class StackInteractionController {
     this.pendingAction = null;
     this.awaitingHostSync = false;
     this.reconcileOptimisticPushPending(message.state);
+    this.reconcileOptimisticPullTrunkPending();
     this.resetDragSession();
     if (shouldRender) {
       this.render();
@@ -124,6 +127,14 @@ export class StackInteractionController {
         this.optimisticPushPending.delete(branchRef);
       }
     }
+  }
+
+  private reconcileOptimisticPullTrunkPending(): void {
+    // Hand off to the host-driven spinner: addPendingOp runs before the
+    // fetch, so the first state arriving after the click normally carries
+    // the pull-trunk pending op. Either way, drop the optimistic flag once
+    // any state lands — host pendingOps is now the source of truth.
+    this.optimisticPullTrunkPending = false;
   }
 
   handleMouseDown(event: MouseEvent): void {
@@ -211,6 +222,10 @@ export class StackInteractionController {
     if (isPullTrunkAction(action)) {
       event.preventDefault();
       event.stopPropagation();
+      if (!this.optimisticPullTrunkPending) {
+        this.optimisticPullTrunkPending = true;
+        this.render();
+      }
       this.postMessage({ type: 'pullTrunk' });
       return;
     }
@@ -323,6 +338,7 @@ export class StackInteractionController {
     renderStackView(this.elements.contentElement, this.renderedState, {
       pendingAction: this.pendingAction,
       pushPending: this.optimisticPushPending,
+      pullTrunkPending: this.optimisticPullTrunkPending,
     });
   }
 

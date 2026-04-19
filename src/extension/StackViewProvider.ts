@@ -1049,6 +1049,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
     const remoteRef = `origin/${trunk}`;
 
+    await this.addPendingOp('pull-trunk', trunk);
     try {
       await git.fetch('origin');
       await git.revParse(remoteRef);
@@ -1076,6 +1077,8 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       void vscode.window.showErrorMessage(
         `Failed to pull ${trunk}${divergenceHint}: ${message}`
       );
+    } finally {
+      await this.removePendingOp('pull-trunk', trunk);
     }
   }
 
