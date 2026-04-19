@@ -121,6 +121,21 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     this.enqueueOperation(() => this.performCreateBranchAtCommit(commitSha));
   }
 
+  async inspectCommit(commitSha: string): Promise<void> {
+    const api = await ScmGitApiUtils.getApi();
+    const repoRoot = this.getWorkspaceRoot();
+    const repo = api && repoRoot ? ScmGitApiUtils.findRepository(api, repoRoot) : null;
+    if (!repo) {
+      void vscode.window.showErrorMessage('Teapot: could not locate the Git repository.');
+      return;
+    }
+    await vscode.commands.executeCommand('git.viewCommit', repo, commitSha);
+  }
+
+  copyCommitSha(commitSha: string): void {
+    this.enqueueOperation(() => this.performCopyCommitSha(commitSha));
+  }
+
   deleteWorktree(branchRef: string, worktreePath: string): void {
     this.enqueueOperation(() => this.performDeleteWorktree(branchRef, worktreePath));
   }
@@ -705,6 +720,11 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   private async performCopyBranchName(branchRef: string): Promise<void> {
     await vscode.env.clipboard.writeText(branchRef);
     void vscode.window.showInformationMessage(`Copied "${branchRef}" to clipboard`);
+  }
+
+  private async performCopyCommitSha(commitSha: string): Promise<void> {
+    await vscode.env.clipboard.writeText(commitSha);
+    void vscode.window.showInformationMessage(`Copied ${commitSha.slice(0, 7)} to clipboard`);
   }
 
   private async performRenameBranch(branchRef: string): Promise<void> {

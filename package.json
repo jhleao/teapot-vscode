@@ -97,6 +97,16 @@
         "category": "Teapot"
       },
       {
+        "command": "teapot.inspectCommit",
+        "title": "Inspect Commit",
+        "category": "Teapot"
+      },
+      {
+        "command": "teapot.copyCommitSha",
+        "title": "Copy SHA",
+        "category": "Teapot"
+      },
+      {
         "command": "teapot.openWorktreeInNewWindow",
         "title": "Open Worktree in New Window",
         "category": "Teapot"
@@ -224,6 +234,11 @@
           "group": "1_modification@4"
         },
         {
+          "command": "teapot.inspectCommit",
+          "when": "webviewId == 'teapot.stackView' && webviewSection == 'commit-row'",
+          "group": "0_primary@0"
+        },
+        {
           "command": "teapot.createBranchAtCommit",
           "when": "webviewId == 'teapot.stackView' && webviewSection == 'commit-row' && teapotCanCreateBranchAtCommit",
           "group": "1_modification@0"
@@ -232,6 +247,11 @@
           "command": "teapot.amendCommitMessage",
           "when": "webviewId == 'teapot.stackView' && webviewSection == 'commit-row' && teapotCommitIsHead",
           "group": "1_modification@1"
+        },
+        {
+          "command": "teapot.copyCommitSha",
+          "when": "webviewId == 'teapot.stackView' && webviewSection == 'commit-row'",
+          "group": "9_cutcopypaste@1"
         },
         {
           "command": "teapot.copyBranchName",
@@ -272,6 +292,14 @@
         },
         {
           "command": "teapot.createBranchAtCommit",
+          "when": "false"
+        },
+        {
+          "command": "teapot.inspectCommit",
+          "when": "false"
+        },
+        {
+          "command": "teapot.copyCommitSha",
           "when": "false"
         },
         {
