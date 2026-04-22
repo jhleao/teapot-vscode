@@ -111,6 +111,7 @@ describe('buildBranchBadgeContext', () => {
         isCurrent: false,
         hasWorktree: false,
         canCreatePullRequest: true,
+        canRebaseWithTrunk: false,
       })
     ).toEqual({
       webviewSection: 'branch-badge',
@@ -120,6 +121,7 @@ describe('buildBranchBadgeContext', () => {
       teapotBranchIsCurrent: false,
       teapotBranchHasWorktree: false,
       teapotBranchCanCreatePullRequest: true,
+      teapotBranchCanRebaseWithTrunk: false,
     });
   });
 
@@ -131,6 +133,7 @@ describe('buildBranchBadgeContext', () => {
         isCurrent: false,
         hasWorktree: false,
         canCreatePullRequest: false,
+        canRebaseWithTrunk: false,
       })
     ).toMatchObject({
       teapotBranchProtected: true,
@@ -147,6 +150,7 @@ describe('buildBranchBadgeContext', () => {
         isCurrent: true,
         hasWorktree: false,
         canCreatePullRequest: false,
+        canRebaseWithTrunk: false,
       })
     ).toMatchObject({
       teapotBranchIsCurrent: true,
@@ -161,6 +165,7 @@ describe('buildBranchBadgeContext', () => {
         isCurrent: false,
         hasWorktree: true,
         canCreatePullRequest: false,
+        canRebaseWithTrunk: false,
       })
     ).toMatchObject({
       teapotBranchHasWorktree: true,

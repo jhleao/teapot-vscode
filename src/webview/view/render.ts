@@ -53,6 +53,7 @@ export function renderStackView(
 
   const rows = layoutRows(state);
   const canCreatePullRequestByBranch = buildPullRequestCreationMap(state);
+  const canRebaseWithTrunkByBranch = buildRebaseWithTrunkMap(state);
   const branchesByRef = new Map(state.branches.map((branch) => [branch.ref, branch]));
   const fragment = document.createDocumentFragment();
   const pendingRebase = state.pendingRebase;
@@ -72,6 +73,7 @@ export function renderStackView(
   const rowContext: RowRenderContext = {
     pendingRebase,
     canCreatePullRequestByBranch,
+    canRebaseWithTrunkByBranch,
     pushPending,
     createPrPending,
     branchesByRef,
@@ -105,6 +107,7 @@ export function renderStackView(
 interface RowRenderContext {
   pendingRebase: RebaseIntent | null;
   canCreatePullRequestByBranch: ReadonlyMap<string, boolean>;
+  canRebaseWithTrunkByBranch: ReadonlyMap<string, boolean>;
   pushPending: ReadonlySet<string>;
   createPrPending: ReadonlySet<string>;
   branchesByRef: ReadonlyMap<string, StackBranch>;
@@ -337,8 +340,14 @@ function renderRow(
   row: RowModel,
   context: RowRenderContext
 ): HTMLElement {
-  const { pendingRebase, canCreatePullRequestByBranch, pushPending, createPrPending, options } =
-    context;
+  const {
+    pendingRebase,
+    canCreatePullRequestByBranch,
+    canRebaseWithTrunkByBranch,
+    pushPending,
+    createPrPending,
+    options,
+  } = context;
   const rowElement = document.createElement('div');
   rowElement.className = 'row';
   rowElement.dataset.branchRef = row.branchName;
@@ -387,6 +396,7 @@ function renderRow(
         row.worktreePath,
         row.worktreePeacockColor,
         canCreatePullRequestByBranch.get(row.branchName) ?? false,
+        canRebaseWithTrunkByBranch.get(row.branchName) ?? false,
         row.additionalBranchRefs
       )
     );
@@ -635,7 +645,7 @@ function createPointerBranchLabels(pointerRefs: readonly string[]): HTMLElement 
   const container = document.createElement('div');
   container.className = 'label-container';
   for (const ref of pointerRefs) {
-    container.append(createBranchLabel(ref, false, false, false, false));
+    container.append(createBranchLabel(ref, false, false, false, false, false));
   }
   return container;
 }
@@ -647,6 +657,7 @@ function createRowLabels(
   worktreePath: string | null,
   worktreePeacockColor: string | null,
   canCreatePullRequest: boolean,
+  canRebaseWithTrunk: boolean,
   additionalBranchRefs: string[]
 ): HTMLElement {
   const container = document.createElement('div');
@@ -657,7 +668,8 @@ function createRowLabels(
       isCurrent,
       isTrunkBranch,
       worktreePath !== null,
-      canCreatePullRequest
+      canCreatePullRequest,
+      canRebaseWithTrunk
     )
   );
   if (additionalBranchRefs.length > 0) {
@@ -690,7 +702,8 @@ function createBranchLabel(
   isCurrent: boolean,
   isTrunkBranch: boolean,
   hasWorktree: boolean,
-  canCreatePullRequest: boolean
+  canCreatePullRequest: boolean,
+  canRebaseWithTrunk: boolean
 ): HTMLElement {
   const label = document.createElement('span');
   label.className = 'label branch';
@@ -706,6 +719,7 @@ function createBranchLabel(
       isCurrent,
       hasWorktree,
       canCreatePullRequest,
+      canRebaseWithTrunk,
     })
   );
 
@@ -731,6 +745,29 @@ function buildPullRequestCreationMap(state: StackState): Map<string, boolean> {
       (parent.isTrunk || !!parent.pullRequest);
 
     result.set(branch.ref, canCreatePullRequest);
+  }
+
+  return result;
+}
+
+function buildRebaseWithTrunkMap(state: StackState): Map<string, boolean> {
+  const result = new Map<string, boolean>();
+  const trunk = state.branches.find((branch) => branch.isTrunk) ?? null;
+  const trunkCommitShas = trunk ? new Set(trunk.commits.map((commit) => commit.sha)) : null;
+
+  for (const branch of state.branches) {
+    // "Stack base" = forks directly off trunk's current history. Using baseSha
+    // membership in trunk.commits is more robust than parentRef === trunk.ref:
+    // parentRef is inferred from an ancestry walk and can resolve to a sibling
+    // branch that happens to share an ancestor commit, even when the branch is
+    // visibly branching off trunk.
+    const isStackBase =
+      !branch.isTrunk &&
+      !branch.isMergedIntoTrunk &&
+      !!trunkCommitShas &&
+      trunkCommitShas.has(branch.baseSha);
+    const isBehindTrunk = !!trunk && branch.baseSha !== trunk.headSha;
+    result.set(branch.ref, isStackBase && isBehindTrunk);
   }
 
   return result;
@@ -901,6 +938,7 @@ export interface BranchBadgeContext {
   teapotBranchIsCurrent: boolean;
   teapotBranchHasWorktree: boolean;
   teapotBranchCanCreatePullRequest: boolean;
+  teapotBranchCanRebaseWithTrunk: boolean;
 }
 
 export function buildBranchBadgeContext(options: {
@@ -909,6 +947,7 @@ export function buildBranchBadgeContext(options: {
   isCurrent: boolean;
   hasWorktree: boolean;
   canCreatePullRequest: boolean;
+  canRebaseWithTrunk: boolean;
 }): BranchBadgeContext {
   return {
     webviewSection: 'branch-badge',
@@ -918,6 +957,7 @@ export function buildBranchBadgeContext(options: {
     teapotBranchIsCurrent: options.isCurrent,
     teapotBranchHasWorktree: options.hasWorktree,
     teapotBranchCanCreatePullRequest: options.canCreatePullRequest,
+    teapotBranchCanRebaseWithTrunk: options.canRebaseWithTrunk,
   };
 }
 

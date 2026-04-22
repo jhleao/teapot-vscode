@@ -20,7 +20,7 @@ import type {
 } from '../protocol';
 import { PrBaseUtils } from '../github/prBaseResolver';
 import { RebaseQueueExecutor, type QueueRunOutcome } from '../rebase/executor';
-import { isRebaseIntentValid } from '../rebase/intent';
+import { createRebaseIntent, isRebaseIntentValid } from '../rebase/intent';
 import { applyRebaseIntentToState } from '../rebase/project';
 import { QueueBuilderUtils } from '../rebase/queueBuilder';
 import { OperationQueueStore } from '../rebase/queueStore';
@@ -146,6 +146,10 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
   createWorktree(branchRef: string): void {
     this.enqueueOperation(() => this.performCreateWorktree(branchRef));
+  }
+
+  rebaseWithTrunk(branchRef: string): void {
+    this.enqueueOperation(() => this.performRebaseWithTrunk(branchRef));
   }
 
   createPullRequest(branchRef: string): void {
@@ -1260,6 +1264,42 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     }
 
     return parent.isTrunk || parent.pullRequest ? parent.ref : null;
+  }
+
+  private async performRebaseWithTrunk(branchRef: string): Promise<void> {
+    const workspaceRoot = this.getWorkspaceRoot();
+    if (!workspaceRoot) {
+      return;
+    }
+
+    const state = await this.getStateForUiInteraction(workspaceRoot);
+    const trunk = state.branches.find((branch) => branch.isTrunk);
+    if (!trunk) {
+      void vscode.window.showErrorMessage('No trunk branch detected.');
+      return;
+    }
+
+    const branch = state.branches.find((candidate) => candidate.ref === branchRef);
+    if (!branch) {
+      void vscode.window.showErrorMessage(`Branch "${branchRef}" not found.`);
+      return;
+    }
+    if (branch.baseSha === trunk.headSha) {
+      void vscode.window.showInformationMessage(
+        `"${branchRef}" is already up to date with "${trunk.ref}".`
+      );
+      return;
+    }
+
+    const intent = createRebaseIntent(state, branchRef, trunk.headSha);
+    if (!intent) {
+      void vscode.window.showErrorMessage(
+        `Cannot rebase "${branchRef}" onto "${trunk.ref}".`
+      );
+      return;
+    }
+
+    await this.submitRebaseIntent(intent);
   }
 
   private async performCreateWorktree(branchRef: string): Promise<void> {

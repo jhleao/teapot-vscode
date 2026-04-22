@@ -117,6 +117,11 @@
         "category": "Teapot"
       },
       {
+        "command": "teapot.rebaseWithTrunk",
+        "title": "Rebase with Trunk",
+        "category": "Teapot"
+      },
+      {
         "command": "teapot.createPullRequest",
         "title": "Create Pull Request...",
         "category": "Teapot"
@@ -214,6 +219,11 @@
           "group": "1_worktree@1"
         },
         {
+          "command": "teapot.rebaseWithTrunk",
+          "when": "webviewId == 'teapot.stackView' && webviewSection == 'branch-badge' && teapotBranchCanRebaseWithTrunk",
+          "group": "2_rebase@1"
+        },
+        {
           "command": "teapot.renameBranch",
           "when": "webviewId == 'teapot.stackView' && webviewSection == 'branch-badge'",
           "group": "9_modification@1"
@@ -293,6 +303,10 @@
         },
         {
           "command": "teapot.createWorktree",
+          "when": "false"
+        },
+        {
+          "command": "teapot.rebaseWithTrunk",
           "when": "false"
         },
         {
