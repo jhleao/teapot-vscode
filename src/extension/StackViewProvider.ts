@@ -1333,8 +1333,32 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     await mkdir(worktreesDir, { recursive: true });
 
     const taken = await readExistingEntries(worktreesDir);
-    const city = WorktreeNamingUtils.pickCity(taken);
-    const worktreePath = join(worktreesDir, city);
+
+    const nameInput = await vscode.window.showInputBox({
+      title: 'New Worktree',
+      prompt: `Name for worktree of "${branchRef}" (leave empty for a random city)`,
+      placeHolder: 'Worktree name',
+      validateInput: (value) => {
+        const trimmed = value.trim();
+        if (!trimmed) {
+          return null;
+        }
+        if (/[\s/\\]/.test(trimmed)) {
+          return 'Worktree name cannot contain whitespace or path separators';
+        }
+        if (taken.has(trimmed)) {
+          return `A worktree named "${trimmed}" already exists`;
+        }
+        return null;
+      },
+    });
+
+    if (nameInput === undefined) {
+      return;
+    }
+
+    const name = nameInput.trim() || WorktreeNamingUtils.pickCity(taken);
+    const worktreePath = join(worktreesDir, name);
     const color = WorktreeNamingUtils.pickColor();
 
     await git.addWorktree(worktreePath, branchRef);
@@ -1342,7 +1366,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
     await this.refresh();
     void vscode.window.showInformationMessage(
-      `Created worktree "${city}" for "${branchRef}"`
+      `Created worktree "${name}" for "${branchRef}"`
     );
   }
 
