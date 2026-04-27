@@ -122,6 +122,11 @@
         "category": "Teapot"
       },
       {
+        "command": "teapot.squashWithParent",
+        "title": "Squash with Parent...",
+        "category": "Teapot"
+      },
+      {
         "command": "teapot.createPullRequest",
         "title": "Create Pull Request...",
         "category": "Teapot"
@@ -224,6 +229,11 @@
           "group": "2_rebase@1"
         },
         {
+          "command": "teapot.squashWithParent",
+          "when": "webviewId == 'teapot.stackView' && webviewSection == 'branch-badge' && teapotBranchCanSquashWithParent",
+          "group": "2_rebase@2"
+        },
+        {
           "command": "teapot.renameBranch",
           "when": "webviewId == 'teapot.stackView' && webviewSection == 'branch-badge'",
           "group": "9_modification@1"
@@ -307,6 +317,10 @@
         },
         {
           "command": "teapot.rebaseWithTrunk",
+          "when": "false"
+        },
+        {
+          "command": "teapot.squashWithParent",
           "when": "false"
         },
         {

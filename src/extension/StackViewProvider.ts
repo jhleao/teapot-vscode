@@ -4,6 +4,8 @@ import * as vscode from 'vscode';
 import { BranchNamingUtils } from '../git/branchNaming';
 import { GitClient } from '../git/gitClient';
 import { PeacockColorUtils } from '../git/peacockColor';
+import { SquashExecutorUtils, type SquashBranchChoice } from '../git/squashExecutor';
+import { SquashPlannerUtils } from '../git/squashPlanner';
 import { GitStackStateLoader } from '../git/stackState/loader';
 import { WorktreeNamingUtils } from '../git/worktreeNaming';
 import { GitHubClient } from '../github/githubClient';
@@ -150,6 +152,10 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
   rebaseWithTrunk(branchRef: string): void {
     this.enqueueOperation(() => this.performRebaseWithTrunk(branchRef));
+  }
+
+  squashWithParent(branchRef: string): void {
+    this.enqueueOperation(() => this.performSquashWithParent(branchRef));
   }
 
   createPullRequest(branchRef: string): void {
@@ -1302,6 +1308,114 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     await this.submitRebaseIntent(intent);
   }
 
+  private async performSquashWithParent(branchRef: string): Promise<void> {
+    const workspaceRoot = this.getWorkspaceRoot();
+    if (!workspaceRoot) {
+      return;
+    }
+
+    const state = await this.getStateForUiInteraction(workspaceRoot);
+    const result = SquashPlannerUtils.plan(state, branchRef);
+    if (!result.ok) {
+      void vscode.window.showErrorMessage(
+        SquashPlannerUtils.describeBlocker(result.reason, branchRef)
+      );
+      return;
+    }
+    const plan = result.plan;
+    const branchesByRef = new Map(state.branches.map((b) => [b.ref, b]));
+    const squashedBranch = branchesByRef.get(branchRef);
+    // Snapshot subtrees BEFORE mutating: after squash the deleted/moved branch
+    // refs would no longer resolve, but the descendants are unchanged on disk
+    // and still need rebasing onto the new parent SHA.
+    const descendantSubtrees: RebaseIntentNode[] = (squashedBranch?.childRefs ?? []).map(
+      (ref) => buildIntentNode(branchesByRef, ref)
+    );
+
+    const git = await this.openGit();
+    if (!git) {
+      return;
+    }
+
+    const repoRoot = git.getRepoRoot();
+    if (await this.rejectIfOperationInProgress(git, repoRoot)) {
+      return;
+    }
+
+    const parentPreview = truncateForQuickPick(plan.newCommitMessageByChoice.parent);
+    const childPreview = truncateForQuickPick(plan.newCommitMessageByChoice.child);
+
+    type Item = vscode.QuickPickItem & { choice: SquashBranchChoice };
+    const items: Item[] = [
+      {
+        label: `Keep ${plan.parentRef}`,
+        description: `delete ${plan.branchRef}`,
+        detail: parentPreview ? `message: ${parentPreview}` : undefined,
+        choice: 'parent',
+      },
+      {
+        label: `Keep ${plan.branchRef}`,
+        description: `delete ${plan.parentRef}`,
+        detail: childPreview ? `message: ${childPreview}` : undefined,
+        choice: 'child',
+      },
+    ];
+
+    const pick = await vscode.window.showQuickPick(items, {
+      title: `Squash ${plan.branchRef} into ${plan.parentRef}`,
+      placeHolder: plan.isEmpty
+        ? `"${plan.branchRef}" has no unique commits. Choose which branch name to keep.`
+        : 'Choose which branch name and commit message to keep',
+    });
+    if (!pick) {
+      return;
+    }
+
+    const message = plan.newCommitMessageByChoice[pick.choice];
+    const execResult = await SquashExecutorUtils.run(git, {
+      plan,
+      message,
+      branchChoice: pick.choice,
+    });
+
+    if (descendantSubtrees.length === 0) {
+      void vscode.commands.executeCommand('git.refresh');
+      await this.refresh();
+      void vscode.window.showInformationMessage(
+        `Squashed "${execResult.deletedBranch}" into "${execResult.keptBranch}"`
+      );
+      return;
+    }
+
+    const store = new OperationQueueStore(repoRoot);
+    const totalDescendants = countSubtreeBranches(descendantSubtrees);
+    const queue = QueueBuilderUtils.fromSubtrees(
+      descendantSubtrees,
+      { kind: 'sha', sha: execResult.newCommitSha },
+      {
+        repoRoot,
+        originalBranchRef: execResult.keptBranch,
+        label:
+          totalDescendants === 1
+            ? `Squash ${execResult.deletedBranch} → rebase ${descendantSubtrees[0].branchRef}`
+            : `Squash ${execResult.deletedBranch} → rebase ${totalDescendants} descendants`,
+      }
+    );
+
+    await store.save(queue);
+    void vscode.commands.executeCommand('git.refresh');
+
+    const executor = new RebaseQueueExecutor(repoRoot, store);
+    const outcome = await executor.runUntilBlocked(queue);
+    await this.handleQueueOutcome(outcome);
+
+    if (outcome.kind !== 'error') {
+      void vscode.window.showInformationMessage(
+        `Squashed "${execResult.deletedBranch}" into "${execResult.keptBranch}"`
+      );
+    }
+  }
+
   private async performCreateWorktree(branchRef: string): Promise<void> {
     const git = await this.openGit();
     if (!git) {
@@ -1614,6 +1728,22 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
 function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function truncateForQuickPick(message: string): string {
+  const firstLine = message.split('\n', 1)[0] ?? '';
+  return firstLine.length > 80 ? `${firstLine.slice(0, 77)}…` : firstLine;
+}
+
+function countSubtreeBranches(subtrees: RebaseIntentNode[]): number {
+  let total = 0;
+  const stack = [...subtrees];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    total += 1;
+    stack.push(...node.children);
+  }
+  return total;
 }
 
 function buildIntentNode(

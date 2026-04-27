@@ -215,12 +215,57 @@ export class GitClient {
     await this.run(['branch', name, sha]);
   }
 
+  async createOrMoveBranch(name: string, sha: string): Promise<void> {
+    await this.run(['branch', '-f', name, sha]);
+  }
+
   async renameBranch(oldName: string, newName: string): Promise<void> {
     await this.run(['branch', '-m', oldName, newName]);
   }
 
   async amendCommitMessage(message: string): Promise<void> {
     await this.run(['commit', '--amend', '-m', message, '--allow-empty']);
+  }
+
+  async formatPatchRange(range: string): Promise<string> {
+    return this.run(['format-patch', '--stdout', '--binary', range]);
+  }
+
+  async applyPatch(patch: string, options: { check?: boolean } = {}): Promise<void> {
+    const args = ['apply'];
+    if (options.check) {
+      args.push('--check');
+    }
+    await runGit(this.repoRoot, args, { input: patch });
+  }
+
+  async amendWithMessageAndAuthor(options: {
+    message: string;
+    authorName?: string;
+    authorEmail?: string;
+  }): Promise<void> {
+    const args = ['commit', '--amend', '-m', options.message, '--allow-empty'];
+    if (options.authorName && options.authorEmail) {
+      args.push(`--author=${options.authorName} <${options.authorEmail}>`);
+    }
+    await this.run(args);
+  }
+
+  async resetHard(ref: string): Promise<void> {
+    await this.run(['reset', '--hard', ref]);
+  }
+
+  async getCommitAuthor(sha: string): Promise<{ name: string; email: string } | null> {
+    try {
+      const stdout = await this.run(['log', '-1', '--format=%an%x1f%ae', sha]);
+      const [name = '', email = ''] = stdout.trim().split('\x1f');
+      if (!name || !email) {
+        return null;
+      }
+      return { name, email };
+    } catch {
+      return null;
+    }
   }
 
   async createAndCheckoutBranch(name: string): Promise<void> {
@@ -367,9 +412,26 @@ async function pathExists(path: string): Promise<boolean> {
 async function runGit(
   cwd: string,
   args: string[],
-  options: { env?: NodeJS.ProcessEnv } = {}
+  options: { env?: NodeJS.ProcessEnv; input?: string } = {}
 ): Promise<string> {
   const env = options.env ? { ...process.env, ...options.env } : undefined;
+  if (options.input !== undefined) {
+    return new Promise((resolve, reject) => {
+      const child = execFile(
+        'git',
+        args,
+        { cwd, maxBuffer: GIT_EXEC_BUFFER_BYTES, env },
+        (error, stdout) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve(stdout);
+        }
+      );
+      child.stdin?.end(options.input);
+    });
+  }
   const { stdout } = await exec('git', args, {
     cwd,
     maxBuffer: GIT_EXEC_BUFFER_BYTES,

@@ -54,6 +54,7 @@ export function renderStackView(
   const rows = layoutRows(state);
   const canCreatePullRequestByBranch = buildPullRequestCreationMap(state);
   const canRebaseWithTrunkByBranch = buildRebaseWithTrunkMap(state);
+  const canSquashWithParentByBranch = buildSquashWithParentMap(state);
   const branchesByRef = new Map(state.branches.map((branch) => [branch.ref, branch]));
   const fragment = document.createDocumentFragment();
   const pendingRebase = state.pendingRebase;
@@ -74,6 +75,7 @@ export function renderStackView(
     pendingRebase,
     canCreatePullRequestByBranch,
     canRebaseWithTrunkByBranch,
+    canSquashWithParentByBranch,
     pushPending,
     createPrPending,
     branchesByRef,
@@ -108,6 +110,7 @@ interface RowRenderContext {
   pendingRebase: RebaseIntent | null;
   canCreatePullRequestByBranch: ReadonlyMap<string, boolean>;
   canRebaseWithTrunkByBranch: ReadonlyMap<string, boolean>;
+  canSquashWithParentByBranch: ReadonlyMap<string, boolean>;
   pushPending: ReadonlySet<string>;
   createPrPending: ReadonlySet<string>;
   branchesByRef: ReadonlyMap<string, StackBranch>;
@@ -344,6 +347,7 @@ function renderRow(
     pendingRebase,
     canCreatePullRequestByBranch,
     canRebaseWithTrunkByBranch,
+    canSquashWithParentByBranch,
     pushPending,
     createPrPending,
     options,
@@ -397,6 +401,7 @@ function renderRow(
         row.worktreePeacockColor,
         canCreatePullRequestByBranch.get(row.branchName) ?? false,
         canRebaseWithTrunkByBranch.get(row.branchName) ?? false,
+        canSquashWithParentByBranch.get(row.branchName) ?? false,
         row.additionalBranchRefs
       )
     );
@@ -645,7 +650,7 @@ function createPointerBranchLabels(pointerRefs: readonly string[]): HTMLElement 
   const container = document.createElement('div');
   container.className = 'label-container';
   for (const ref of pointerRefs) {
-    container.append(createBranchLabel(ref, false, false, false, false, false));
+    container.append(createBranchLabel(ref, false, false, false, false, false, false));
   }
   return container;
 }
@@ -658,6 +663,7 @@ function createRowLabels(
   worktreePeacockColor: string | null,
   canCreatePullRequest: boolean,
   canRebaseWithTrunk: boolean,
+  canSquashWithParent: boolean,
   additionalBranchRefs: string[]
 ): HTMLElement {
   const container = document.createElement('div');
@@ -669,7 +675,8 @@ function createRowLabels(
       isTrunkBranch,
       worktreePath !== null,
       canCreatePullRequest,
-      canRebaseWithTrunk
+      canRebaseWithTrunk,
+      canSquashWithParent
     )
   );
   if (additionalBranchRefs.length > 0) {
@@ -703,7 +710,8 @@ function createBranchLabel(
   isTrunkBranch: boolean,
   hasWorktree: boolean,
   canCreatePullRequest: boolean,
-  canRebaseWithTrunk: boolean
+  canRebaseWithTrunk: boolean,
+  canSquashWithParent: boolean
 ): HTMLElement {
   const label = document.createElement('span');
   label.className = 'label branch';
@@ -720,6 +728,7 @@ function createBranchLabel(
       hasWorktree,
       canCreatePullRequest,
       canRebaseWithTrunk,
+      canSquashWithParent,
     })
   );
 
@@ -745,6 +754,30 @@ function buildPullRequestCreationMap(state: StackState): Map<string, boolean> {
       (parent.isTrunk || !!parent.pullRequest);
 
     result.set(branch.ref, canCreatePullRequest);
+  }
+
+  return result;
+}
+
+function buildSquashWithParentMap(state: StackState): Map<string, boolean> {
+  const branchesByRef = new Map(state.branches.map((branch) => [branch.ref, branch]));
+  const result = new Map<string, boolean>();
+
+  for (const branch of state.branches) {
+    if (branch.isTrunk || branch.isMergedIntoTrunk) {
+      result.set(branch.ref, false);
+      continue;
+    }
+    if (!branch.parentRef) {
+      result.set(branch.ref, false);
+      continue;
+    }
+    const parent = branchesByRef.get(branch.parentRef);
+    if (!parent || parent.isTrunk) {
+      result.set(branch.ref, false);
+      continue;
+    }
+    result.set(branch.ref, true);
   }
 
   return result;
@@ -939,6 +972,7 @@ export interface BranchBadgeContext {
   teapotBranchHasWorktree: boolean;
   teapotBranchCanCreatePullRequest: boolean;
   teapotBranchCanRebaseWithTrunk: boolean;
+  teapotBranchCanSquashWithParent: boolean;
 }
 
 export function buildBranchBadgeContext(options: {
@@ -948,6 +982,7 @@ export function buildBranchBadgeContext(options: {
   hasWorktree: boolean;
   canCreatePullRequest: boolean;
   canRebaseWithTrunk: boolean;
+  canSquashWithParent: boolean;
 }): BranchBadgeContext {
   return {
     webviewSection: 'branch-badge',
@@ -958,6 +993,7 @@ export function buildBranchBadgeContext(options: {
     teapotBranchHasWorktree: options.hasWorktree,
     teapotBranchCanCreatePullRequest: options.canCreatePullRequest,
     teapotBranchCanRebaseWithTrunk: options.canRebaseWithTrunk,
+    teapotBranchCanSquashWithParent: options.canSquashWithParent,
   };
 }
 

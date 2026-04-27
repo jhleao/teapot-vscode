@@ -62,6 +62,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('teapot.rebaseWithTrunk', (ctx: { branchRef: string }) => {
       provider.rebaseWithTrunk(ctx.branchRef);
     }),
+    vscode.commands.registerCommand('teapot.squashWithParent', (ctx: { branchRef: string }) => {
+      provider.squashWithParent(ctx.branchRef);
+    }),
     vscode.commands.registerCommand('teapot.createPullRequest', (ctx: { branchRef: string }) => {
       provider.createPullRequest(ctx.branchRef);
     }),
