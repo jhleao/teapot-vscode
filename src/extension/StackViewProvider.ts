@@ -844,6 +844,21 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       return;
     }
 
+    const git = await this.openGit();
+    if (!git) {
+      return;
+    }
+
+    const repoRoot = git.getRepoRoot();
+    if (await this.rejectIfOperationInProgress(git, repoRoot)) {
+      return;
+    }
+
+    const branchesByRef = new Map(state.branches.map((branch) => [branch.ref, branch]));
+    const descendantSubtrees: RebaseIntentNode[] = currentBranch.childRefs.map((ref) =>
+      buildIntentNode(branchesByRef, ref)
+    );
+
     const newMessage = await vscode.window.showInputBox({
       title: 'Amend Commit Message',
       prompt: 'Rewrites the current commit with a new message',
@@ -855,13 +870,36 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       return;
     }
 
-    const git = await this.openGit();
-    if (!git) {
+    await git.amendCommitMessage(newMessage.trim());
+    const newHead = await git.revParse('HEAD');
+
+    if (descendantSubtrees.length === 0) {
+      void vscode.commands.executeCommand('git.refresh');
+      await this.refresh();
       return;
     }
 
-    await git.amendCommitMessage(newMessage.trim());
-    await this.refresh();
+    const store = new OperationQueueStore(repoRoot);
+    const totalDescendants = countSubtreeBranches(descendantSubtrees);
+    const queue = QueueBuilderUtils.fromSubtrees(
+      descendantSubtrees,
+      { kind: 'sha', sha: newHead },
+      {
+        repoRoot,
+        originalBranchRef: currentBranch.ref,
+        label:
+          totalDescendants === 1
+            ? `Amend message → rebase ${descendantSubtrees[0].branchRef}`
+            : `Amend message → rebase ${totalDescendants} descendants`,
+      }
+    );
+
+    await store.save(queue);
+    void vscode.commands.executeCommand('git.refresh');
+
+    const executor = new RebaseQueueExecutor(repoRoot, store);
+    const outcome = await executor.runUntilBlocked(queue);
+    await this.handleQueueOutcome(outcome);
   }
 
   private async performCreateBranchAtCommit(commitSha: string): Promise<void> {
