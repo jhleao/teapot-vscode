@@ -18,6 +18,11 @@ interface LayoutContext {
   commitTimesBySha: Map<string, number>;
   childRefsByParentAndBase: Map<string, ChildRefsByBaseSha>;
   additionalRefsByPrimary: Map<string, string[]>;
+  // Refs that share the primary's row but render as their own full label
+  // (next to the primary's), instead of folding into the `+N` overflow badge.
+  // Currently used for the checked-out branch when it shares its tip with
+  // trunk — both labels stay visible on the trunk row.
+  coPrimaryRefsByPrimary: Map<string, string[]>;
   collapsedBranchRefs: Set<string>;
   primaryByCollapsed: Map<string, string>;
   // Sibling branches that share parentRef + baseSha are visually reattached
@@ -77,6 +82,10 @@ export interface RowModel {
   worktreePeacockColor: string | null;
   pullRequest: PullRequestInfo | null;
   additionalBranchRefs: string[];
+  // Refs that share this row but render as their own full branch label
+  // alongside the primary, instead of folding into `additionalBranchRefs`'s
+  // overflow badge. Populated only on the primary's branch-tip row.
+  coPrimaryBranchRefs: string[];
   // Refs to non-trunk branches that collapse onto this row because their
   // headSha matches this commit's SHA (and they have no unique commits).
   // Populated only on trunk commit rows; empty elsewhere.
@@ -90,6 +99,7 @@ export function layoutRows(state: StackState): RowModel[] {
     commitTimesBySha,
     childRefsByParentAndBase,
     additionalRefsByPrimary,
+    coPrimaryRefsByPrimary,
     collapsedBranchRefs,
     primaryByCollapsed,
     reattachedSpinoffs,
@@ -176,6 +186,7 @@ export function layoutRows(state: StackState): RowModel[] {
         worktreePeacockColor: branch.worktreePeacockColor,
         pullRequest: branch.pullRequest,
         additionalBranchRefs: additionalRefsByPrimary.get(branch.ref) ?? [],
+        coPrimaryBranchRefs: coPrimaryRefsByPrimary.get(branch.ref) ?? [],
         pointerBranchRefs: [],
         canCreateBranchAtCommit: false,
       });
@@ -216,6 +227,9 @@ export function layoutRows(state: StackState): RowModel[] {
         additionalBranchRefs: isBranchTip
           ? additionalRefsByPrimary.get(branch.ref) ?? []
           : [],
+        coPrimaryBranchRefs: isBranchTip
+          ? coPrimaryRefsByPrimary.get(branch.ref) ?? []
+          : [],
         pointerBranchRefs: branch.isTrunk
           ? pointerBranchRefsByTrunkSha.get(commit.sha) ?? []
           : [],
@@ -243,6 +257,7 @@ export function layoutRows(state: StackState): RowModel[] {
         worktreePeacockColor: null,
         pullRequest: null,
         additionalBranchRefs: [],
+        coPrimaryBranchRefs: [],
         pointerBranchRefs: [],
         canCreateBranchAtCommit: false,
       });
@@ -295,8 +310,12 @@ function sortChildRefs(
 function createLayoutContext(branches: StackBranch[]): LayoutContext {
   const branchesByRef = branchesByRefIndex(branches);
   const commitTimesBySha = commitTimesByShaIndex(branches);
-  const { additionalRefsByPrimary, collapsedBranchRefs, primaryByCollapsed } =
-    planSameShaCollapse(branches);
+  const {
+    additionalRefsByPrimary,
+    coPrimaryRefsByPrimary,
+    collapsedBranchRefs,
+    primaryByCollapsed,
+  } = planSameShaCollapse(branches);
   const { pointerBranchRefsByTrunkSha, collapsedPointers } = planPointerBranches(
     branches,
     collapsedBranchRefs
@@ -333,6 +352,7 @@ function createLayoutContext(branches: StackBranch[]): LayoutContext {
     commitTimesBySha,
     childRefsByParentAndBase,
     additionalRefsByPrimary,
+    coPrimaryRefsByPrimary,
     collapsedBranchRefs,
     primaryByCollapsed,
     reattachedSpinoffs,
@@ -551,6 +571,7 @@ function computeLaneByRef(
 // visible alongside the locals.
 function planSameShaCollapse(branches: StackBranch[]): {
   additionalRefsByPrimary: Map<string, string[]>;
+  coPrimaryRefsByPrimary: Map<string, string[]>;
   collapsedBranchRefs: Set<string>;
   primaryByCollapsed: Map<string, string>;
 } {
@@ -565,6 +586,7 @@ function planSameShaCollapse(branches: StackBranch[]): {
   }
 
   const additionalRefsByPrimary = new Map<string, string[]>();
+  const coPrimaryRefsByPrimary = new Map<string, string[]>();
   const collapsedBranchRefs = new Set<string>();
   const primaryByCollapsed = new Map<string, string>();
 
@@ -573,32 +595,56 @@ function planSameShaCollapse(branches: StackBranch[]): {
       continue;
     }
 
-    // Primary order: current first, then trunk, then input order. Trunk wins
-    // the tiebreaker when nobody in the group is current so that, e.g., a
-    // disposable child branch sitting on `main` collapses into `main`'s row.
-    const sorted = [...group].sort((a, b) => {
-      if (a.isCurrent !== b.isCurrent) {
-        return a.isCurrent ? -1 : 1;
-      }
-      if (a.isTrunk !== b.isTrunk) {
-        return a.isTrunk ? -1 : 1;
-      }
-      return 0;
-    });
+    // Trunk always keeps its own row when present in the group — collapsing
+    // it under a non-trunk sibling would hide `main` and, when that sibling
+    // is the current branch with no commits of its own, leave the view blank
+    // (the trunk row is the spine the rest of the graph hangs off).
+    //
+    // The current branch (when distinct from trunk) is rendered as a full
+    // co-primary label on the same row so the user can always see which ref
+    // is checked out. The remaining siblings still collapse into the `+N`
+    // overflow badge. When trunk is absent, the current branch becomes the
+    // primary and the rest collapse into its badge.
+    const trunk = group.find((branch) => branch.isTrunk);
+    const currentNonTrunk = group.find(
+      (branch) => branch.isCurrent && !branch.isTrunk
+    );
 
-    const primary = sorted[0];
-    const rest = sorted.slice(1);
+    let primary: StackBranch;
+    let coPrimary: StackBranch | null = null;
+    if (trunk) {
+      primary = trunk;
+      coPrimary = currentNonTrunk ?? null;
+    } else if (currentNonTrunk) {
+      primary = currentNonTrunk;
+    } else {
+      primary = group[0];
+    }
+
+    const rest = group.filter(
+      (branch) => branch !== primary && branch !== coPrimary
+    );
     additionalRefsByPrimary.set(
       primary.ref,
       rest.map((branch) => branch.ref)
     );
+    if (coPrimary) {
+      coPrimaryRefsByPrimary.set(primary.ref, [coPrimary.ref]);
+      collapsedBranchRefs.add(coPrimary.ref);
+      primaryByCollapsed.set(coPrimary.ref, primary.ref);
+    }
     for (const branch of rest) {
       collapsedBranchRefs.add(branch.ref);
       primaryByCollapsed.set(branch.ref, primary.ref);
     }
   }
 
-  return { additionalRefsByPrimary, collapsedBranchRefs, primaryByCollapsed };
+  return {
+    additionalRefsByPrimary,
+    coPrimaryRefsByPrimary,
+    collapsedBranchRefs,
+    primaryByCollapsed,
+  };
 }
 
 function branchesByRefIndex(branches: StackBranch[]): Map<string, StackBranch> {

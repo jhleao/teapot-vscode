@@ -1000,6 +1000,77 @@ describe('layoutRows', () => {
     expect(tipRows[0].additionalBranchRefs).toEqual(['aaa-feature']);
   });
 
+  it('keeps trunk primary and exposes the current sibling as a co-primary on the same row when they share a SHA', () => {
+    const state: StackState = {
+      branches: [
+        {
+          ref: 'main',
+          headSha: 'm1',
+          baseSha: 'm1',
+          parentRef: null,
+          childRefs: ['wev-1073', 'chore/cleanup'],
+          commits: [{ sha: 'm1', message: 'main', author: 'dev', timeMs: 1, parentSha: '' }],
+          isTrunk: true,
+          isRemote: false,
+          isCurrent: false,
+          hasUncommittedChanges: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null, isMergedIntoTrunk: false,
+        },
+        {
+          ref: 'wev-1073',
+          headSha: 'm1',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: [],
+          commits: [],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: true,
+          hasUncommittedChanges: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null, isMergedIntoTrunk: false,
+        },
+        {
+          ref: 'chore/cleanup',
+          headSha: 'm1',
+          baseSha: 'm1',
+          parentRef: 'main',
+          childRefs: [],
+          commits: [],
+          isTrunk: false,
+          isRemote: false,
+          isCurrent: false,
+          hasUncommittedChanges: false,
+          worktreePath: null,
+          worktreePeacockColor: null,
+          pullRequest: null, isMergedIntoTrunk: false,
+        },
+      ],
+      trunk: 'main',
+      current: 'wev-1073',
+      repoRoot: '/repo',
+      error: null,
+      pendingRebase: null,
+    activeRebase: null,
+    };
+
+    const rows = layoutRows(state);
+    const mainRow = rows.find(
+      (row) => row.kind === 'commit' && row.branchName === 'main' && row.commit?.sha === 'm1'
+    );
+    const wevRow = rows.find((row) => row.branchName === 'wev-1073');
+    const choreRow = rows.find((row) => row.branchName === 'chore/cleanup');
+
+    expect(mainRow).toBeDefined();
+    expect(mainRow?.coPrimaryBranchRefs).toEqual(['wev-1073']);
+    expect(mainRow?.additionalBranchRefs).toEqual(['chore/cleanup']);
+    expect(wevRow).toBeUndefined();
+    expect(choreRow).toBeUndefined();
+  });
+
   it('keeps remote siblings as their own rows even when sharing a SHA with locals', () => {
     const state: StackState = {
       branches: [

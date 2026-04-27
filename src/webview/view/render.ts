@@ -187,6 +187,7 @@ function createUncommittedChangesRow(tipRow: RowModel): HTMLElement {
     worktreePeacockColor: null,
     pullRequest: null,
     additionalBranchRefs: [],
+    coPrimaryBranchRefs: [],
     canCreateBranchAtCommit: false,
   };
   graphContainer.append(renderRowGraph(graphRow));
@@ -350,6 +351,7 @@ function renderRow(
     canSquashWithParentByBranch,
     pushPending,
     createPrPending,
+    branchesByRef,
     options,
   } = context;
   const rowElement = document.createElement('div');
@@ -402,7 +404,9 @@ function renderRow(
         canCreatePullRequestByBranch.get(row.branchName) ?? false,
         canRebaseWithTrunkByBranch.get(row.branchName) ?? false,
         canSquashWithParentByBranch.get(row.branchName) ?? false,
-        row.additionalBranchRefs
+        row.additionalBranchRefs,
+        row.coPrimaryBranchRefs,
+        branchesByRef
       )
     );
   } else if (row.pointerBranchRefs.length > 0) {
@@ -664,7 +668,9 @@ function createRowLabels(
   canCreatePullRequest: boolean,
   canRebaseWithTrunk: boolean,
   canSquashWithParent: boolean,
-  additionalBranchRefs: string[]
+  additionalBranchRefs: string[],
+  coPrimaryBranchRefs: string[],
+  branchesByRef: ReadonlyMap<string, StackBranch>
 ): HTMLElement {
   const container = document.createElement('div');
   container.className = 'label-container';
@@ -679,6 +685,20 @@ function createRowLabels(
       canSquashWithParent
     )
   );
+  for (const ref of coPrimaryBranchRefs) {
+    const branch = branchesByRef.get(ref);
+    container.append(
+      createBranchLabel(
+        ref,
+        branch?.isCurrent ?? false,
+        branch?.isTrunk ?? false,
+        branch?.worktreePath != null,
+        false,
+        false,
+        false
+      )
+    );
+  }
   if (additionalBranchRefs.length > 0) {
     container.append(createBranchOverflowBadge(branchName, additionalBranchRefs));
   }
