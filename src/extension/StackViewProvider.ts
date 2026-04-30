@@ -435,17 +435,48 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       return;
     }
 
-    const inputMessage = (await this.readScmInputValue(git.getRepoRoot())).trim();
-    if (!inputMessage && !options.stageAll) {
-      void vscode.window.showErrorMessage(
-        'Enter a commit message in the Source Control input box first.'
-      );
+    const existing = new Set((await git.listLocalBranches()).map((b) => b.name));
+    const defaultBranchName = BranchNamingUtils.generate(existing);
+
+    const branchInput = await vscode.window.showInputBox({
+      title: 'Branch & Commit — Branch Name',
+      prompt: 'Name for the new branch (leave empty for a random name)',
+      placeHolder: defaultBranchName,
+      validateInput: (value) => {
+        const trimmed = value.trim();
+        if (!trimmed) {
+          return null;
+        }
+        if (/\s/.test(trimmed)) {
+          return 'Branch name cannot contain whitespace';
+        }
+        if (existing.has(trimmed)) {
+          return `A branch named "${trimmed}" already exists`;
+        }
+        return null;
+      },
+    });
+
+    if (branchInput === undefined) {
       return;
     }
 
-    const existing = new Set((await git.listLocalBranches()).map((b) => b.name));
-    const branchName = BranchNamingUtils.generate(existing);
-    const message = inputMessage || BranchNamingUtils.wipCommitMessage(branchName);
+    const branchName = branchInput.trim() || defaultBranchName;
+
+    const scmMessage = (await this.readScmInputValue(git.getRepoRoot())).trim();
+    const defaultMessage = scmMessage || BranchNamingUtils.wipCommitMessage(branchName);
+
+    const messageInput = await vscode.window.showInputBox({
+      title: 'Branch & Commit — Commit Message',
+      prompt: 'Commit message (leave empty for a default message)',
+      placeHolder: defaultMessage,
+    });
+
+    if (messageInput === undefined) {
+      return;
+    }
+
+    const message = messageInput.trim() || defaultMessage;
 
     await git.createAndCheckoutBranch(branchName);
     await git.commitChanges(message);
