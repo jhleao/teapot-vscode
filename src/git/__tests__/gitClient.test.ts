@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { parseLocalBranchSnapshot, parseWorktreePorcelain } from '../gitClient';
+import {
+  isLockContentionError,
+  parseLocalBranchSnapshot,
+  parseWorktreePorcelain,
+} from '../gitClient';
 
 describe('parseLocalBranchSnapshot', () => {
   it('parses branches and marks the current branch from for-each-ref output', () => {
@@ -65,5 +69,37 @@ describe('parseWorktreePorcelain', () => {
   it('skips blocks without a worktree line', () => {
     const stdout = ['HEAD aaaaaaa', 'branch refs/heads/orphan'].join('\n');
     expect(parseWorktreePorcelain(stdout)).toEqual([]);
+  });
+});
+
+describe('isLockContentionError', () => {
+  it('matches the index.lock contention error from git rebase', () => {
+    const error = new Error(
+      "Command failed: git rebase --quiet --reapply-cherry-picks --onto abc def^ branch\n" +
+        "error: Unable to create '/repo/.git/index.lock': File exists.\n" +
+        "Another git process seems to be running in this repository, e.g. an editor opened by 'git commit'.\n" +
+        'error: could not detach HEAD'
+    );
+    expect(isLockContentionError(error)).toBe(true);
+  });
+
+  it('matches HEAD.lock and other ref-lock variants', () => {
+    expect(
+      isLockContentionError(new Error("Unable to create '/repo/.git/HEAD.lock': File exists."))
+    ).toBe(true);
+    expect(
+      isLockContentionError(
+        new Error("Unable to create '/repo/.git/refs/heads/main.lock': File exists.")
+      )
+    ).toBe(true);
+  });
+
+  it('does not match unrelated errors', () => {
+    expect(isLockContentionError(new Error('CONFLICT (content): Merge conflict in foo.ts'))).toBe(
+      false
+    );
+    expect(isLockContentionError(new Error('fatal: not a git repository'))).toBe(false);
+    expect(isLockContentionError(null)).toBe(false);
+    expect(isLockContentionError(undefined)).toBe(false);
   });
 });

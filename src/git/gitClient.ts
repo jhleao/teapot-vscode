@@ -7,6 +7,12 @@ import type { Commit } from '../protocol';
 const exec = promisify(execFile);
 const GIT_EXEC_BUFFER_BYTES = 32 * 1024 * 1024;
 
+// Retry git when another process holds .git/*.lock. Total ~1.55s budget covers
+// a refresh's `git status` finishing or VS Code's built-in git releasing its
+// hold on the index between rebase steps; longer-held locks (a real concurrent
+// commit) still surface as errors.
+const LOCK_RETRY_DELAYS_MS = [50, 100, 200, 400, 800];
+
 export interface LocalBranchHead {
   name: string;
   headSha: string;
@@ -414,6 +420,30 @@ async function runGit(
   args: string[],
   options: { env?: NodeJS.ProcessEnv; input?: string } = {}
 ): Promise<string> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= LOCK_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      return await runGitOnce(cwd, args, options);
+    } catch (error) {
+      if (!isLockContentionError(error)) {
+        throw error;
+      }
+      lastError = error;
+      const delay = LOCK_RETRY_DELAYS_MS[attempt];
+      if (delay === undefined) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+  throw lastError;
+}
+
+async function runGitOnce(
+  cwd: string,
+  args: string[],
+  options: { env?: NodeJS.ProcessEnv; input?: string } = {}
+): Promise<string> {
   const env = options.env ? { ...process.env, ...options.env } : undefined;
   if (options.input !== undefined) {
     return new Promise((resolve, reject) => {
@@ -438,6 +468,14 @@ async function runGit(
     env,
   });
   return stdout;
+}
+
+export function isLockContentionError(error: unknown): boolean {
+  if (!error) {
+    return false;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return /Unable to create .*\.lock['"]?: File exists/i.test(message);
 }
 
 export function parseWorktreePorcelain(stdout: string): WorktreeInfo[] {
