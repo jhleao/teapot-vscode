@@ -102,8 +102,8 @@ async function buildActiveRebaseState(
   git: GitClient,
   store: OperationQueueStore
 ): Promise<ActiveRebaseState | null> {
-  const [inProgress, queue] = await Promise.all([git.hasActiveRebase(), store.load()]);
-  if (!inProgress && !queue) {
+  const [pausedRebase, queue] = await Promise.all([git.hasPausedRebase(), store.load()]);
+  if (!pausedRebase) {
     return null;
   }
 
@@ -111,7 +111,7 @@ async function buildActiveRebaseState(
     queue && queue.cursor < queue.steps.length ? queue.steps[queue.cursor] : null;
 
   return {
-    gitInProgress: inProgress !== null,
+    gitInProgress: true,
     queued: queue !== null,
     pendingStepCount: queue
       ? Math.max(queue.steps.length - queue.cursor - 1, 0)
@@ -120,7 +120,7 @@ async function buildActiveRebaseState(
       nextStep?.kind === 'rebase-branch'
         ? { branchRef: nextStep.branchRef, label: `Rebasing ${nextStep.branchRef}` }
         : null,
-    headBranchRef: inProgress ? await git.readRebaseMergeHeadName() : null,
+    headBranchRef: await git.readRebaseMergeHeadName(),
   };
 }
 

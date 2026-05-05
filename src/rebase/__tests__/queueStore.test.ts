@@ -102,6 +102,11 @@ describe('GitClient worktree gitdir handling', () => {
     writeFileSync(join(rebaseMergeDir, 'head-name'), 'refs/heads/feature\n');
 
     await expect(gitClient.hasActiveRebase()).resolves.toBe('merge');
+    await expect(gitClient.hasPausedRebase()).resolves.toBeNull();
+
+    writeFileSync(join(rebaseMergeDir, 'stopped-sha'), 'abc123\n');
+
+    await expect(gitClient.hasPausedRebase()).resolves.toBe('merge');
     await expect(gitClient.readRebaseMergeHeadName()).resolves.toBe('feature');
   });
 });

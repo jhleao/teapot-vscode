@@ -406,6 +406,21 @@ export class GitClient {
     return null;
   }
 
+  async hasPausedRebase(): Promise<'merge' | 'apply' | null> {
+    if (await pathExists(join(this.gitDir, 'rebase-merge'))) {
+      return (await pathExists(join(this.gitDir, 'rebase-merge', 'stopped-sha')))
+        ? 'merge'
+        : null;
+    }
+    if (await pathExists(join(this.gitDir, 'rebase-apply'))) {
+      if (await pathExists(join(this.gitDir, 'rebase-apply', 'patch-merge-index'))) {
+        return 'apply';
+      }
+      return (await this.hasUnmergedPaths()) ? 'apply' : null;
+    }
+    return null;
+  }
+
   async readRebaseMergeHeadName(): Promise<string | null> {
     const path = join(this.gitDir, 'rebase-merge', 'head-name');
     try {
@@ -418,6 +433,11 @@ export class GitClient {
 
   private run(args: string[], options: { env?: NodeJS.ProcessEnv } = {}): Promise<string> {
     return runGit(this.repoRoot, args, options);
+  }
+
+  private async hasUnmergedPaths(): Promise<boolean> {
+    const stdout = await this.run(['diff', '--name-only', '--diff-filter=U']);
+    return stdout.trim().length > 0;
   }
 }
 
