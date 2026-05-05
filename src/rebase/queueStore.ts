@@ -1,12 +1,16 @@
+import { readFileSync, statSync } from 'node:fs';
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import type { OperationQueue } from '../protocol';
 
 export class OperationQueueStore {
   private readonly queuePath: string;
 
-  constructor(private readonly repoRoot: string) {
-    this.queuePath = join(repoRoot, '.git', 'teapot', 'operation-queue.json');
+  constructor(
+    private readonly repoRoot: string,
+    gitDir = resolveGitDirFromRepoRoot(repoRoot)
+  ) {
+    this.queuePath = join(gitDir, 'teapot', 'operation-queue.json');
   }
 
   getPath(): string {
@@ -101,4 +105,27 @@ function isTargetBase(value: unknown): boolean {
   if (tb.kind === 'ref') return typeof tb.ref === 'string';
   if (tb.kind === 'completed-step-head') return typeof tb.stepId === 'string';
   return false;
+}
+
+export function resolveGitDirFromRepoRoot(repoRoot: string): string {
+  const dotGitPath = join(repoRoot, '.git');
+
+  try {
+    const dotGitStat = statSync(dotGitPath);
+    if (dotGitStat.isDirectory()) {
+      return dotGitPath;
+    }
+    if (dotGitStat.isFile()) {
+      const contents = readFileSync(dotGitPath, 'utf8');
+      const match = contents.match(/^gitdir:\s*(.+?)\s*$/i);
+      if (match?.[1]) {
+        const gitDir = match[1];
+        return isAbsolute(gitDir) ? gitDir : resolve(repoRoot, gitDir);
+      }
+    }
+  } catch {
+    // Fall back to the historical location; callers will surface any I/O error.
+  }
+
+  return dotGitPath;
 }

@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { stat, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import type { Commit } from '../protocol';
 
 const exec = promisify(execFile);
@@ -33,26 +33,38 @@ export interface CommitTopologyEntry {
   parentShas: string[];
 }
 
-export class GitClient {
-  private static readonly repoRootByCwd = new Map<string, string>();
+interface RepoInfo {
+  repoRoot: string;
+  gitDir: string;
+}
 
-  private constructor(private readonly repoRoot: string) {}
+export class GitClient {
+  private static readonly repoInfoByCwd = new Map<string, RepoInfo>();
+
+  private constructor(
+    private readonly repoRoot: string,
+    private readonly gitDir: string
+  ) {}
 
   static async open(cwd: string): Promise<GitClient | null> {
-    const cachedRepoRoot = GitClient.repoRootByCwd.get(cwd);
-    if (cachedRepoRoot) {
-      return new GitClient(cachedRepoRoot);
+    const cachedRepoInfo = GitClient.repoInfoByCwd.get(cwd);
+    if (cachedRepoInfo) {
+      return new GitClient(cachedRepoInfo.repoRoot, cachedRepoInfo.gitDir);
     }
 
     try {
-      const stdout = await runGit(cwd, ['rev-parse', '--show-toplevel']);
-      const repoRoot = stdout.trim();
-      if (!repoRoot) {
+      const [repoRootStdout, gitDir] = await Promise.all([
+        runGit(cwd, ['rev-parse', '--show-toplevel']),
+        resolveGitDir(cwd),
+      ]);
+      const repoRoot = repoRootStdout.trim();
+      if (!repoRoot || !gitDir) {
         return null;
       }
 
-      GitClient.repoRootByCwd.set(cwd, repoRoot);
-      return new GitClient(repoRoot);
+      const repoInfo = { repoRoot, gitDir };
+      GitClient.repoInfoByCwd.set(cwd, repoInfo);
+      return new GitClient(repoRoot, gitDir);
     } catch {
       return null;
     }
@@ -60,6 +72,10 @@ export class GitClient {
 
   getRepoRoot(): string {
     return this.repoRoot;
+  }
+
+  getGitDir(): string {
+    return this.gitDir;
   }
 
   async getCurrentBranch(): Promise<string | null> {
@@ -381,18 +397,17 @@ export class GitClient {
   }
 
   async hasActiveRebase(): Promise<'merge' | 'apply' | null> {
-    const gitDir = join(this.repoRoot, '.git');
-    if (await pathExists(join(gitDir, 'rebase-merge'))) {
+    if (await pathExists(join(this.gitDir, 'rebase-merge'))) {
       return 'merge';
     }
-    if (await pathExists(join(gitDir, 'rebase-apply'))) {
+    if (await pathExists(join(this.gitDir, 'rebase-apply'))) {
       return 'apply';
     }
     return null;
   }
 
   async readRebaseMergeHeadName(): Promise<string | null> {
-    const path = join(this.repoRoot, '.git', 'rebase-merge', 'head-name');
+    const path = join(this.gitDir, 'rebase-merge', 'head-name');
     try {
       const contents = await readFile(path, 'utf8');
       return contents.trim().replace(/^refs\/heads\//, '') || null;
@@ -437,6 +452,15 @@ async function runGit(
     }
   }
   throw lastError;
+}
+
+async function resolveGitDir(cwd: string): Promise<string> {
+  try {
+    return (await runGit(cwd, ['rev-parse', '--absolute-git-dir'])).trim();
+  } catch {
+    const gitDir = (await runGit(cwd, ['rev-parse', '--git-dir'])).trim();
+    return isAbsolute(gitDir) ? gitDir : resolve(cwd, gitDir);
+  }
 }
 
 async function runGitOnce(
