@@ -22,6 +22,10 @@ export class GitRefsWatcher implements vscode.Disposable {
       '.git/rebase-merge/**',
       '.git/rebase-apply/**',
       '.git/teapot/operation-queue.json',
+      // Agent-attention files. This relative pattern only resolves in the main
+      // checkout (where .git is a real dir); linked worktrees are covered by
+      // the absolute-path watcher in StackViewProvider.attachAgentsWatcher.
+      '.git/teapot/agents/**',
     ];
 
     for (const pattern of patterns) {

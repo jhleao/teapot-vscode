@@ -43,6 +43,10 @@ export interface StackBranch {
   hasUncommittedChanges: boolean;
   worktreePath: string | null;
   worktreePeacockColor: string | null;
+  // True when a coding agent in this branch's worktree is waiting on the user
+  // (needs approval / idle) or has just finished a turn. Best-effort signal
+  // written by editor hooks; see git/stackState/agentAttention.ts.
+  needsAttention: boolean;
   pullRequest: PullRequestInfo | null;
   // True iff this branch's headSha is an ancestor of trunk's headSha — i.e.
   // its commits are already in trunk's history (fast-forward merge case).

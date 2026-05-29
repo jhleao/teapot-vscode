@@ -49,7 +49,7 @@ describe('dragAndDrop helpers', () => {
           hasUncommittedChanges: false,
           worktreePath: null,
           worktreePeacockColor: null,
-          pullRequest: null, isMergedIntoTrunk: false,
+          pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
         {
           ref: 'feature',
@@ -64,7 +64,7 @@ describe('dragAndDrop helpers', () => {
           hasUncommittedChanges: false,
           worktreePath: null,
           worktreePeacockColor: null,
-          pullRequest: null, isMergedIntoTrunk: false,
+          pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
         {
           ref: 'fixup',
@@ -79,7 +79,7 @@ describe('dragAndDrop helpers', () => {
           hasUncommittedChanges: false,
           worktreePath: null,
           worktreePeacockColor: null,
-          pullRequest: null, isMergedIntoTrunk: false,
+          pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
       ],
       trunk: 'main',

@@ -143,7 +143,7 @@ function branch(opts: BranchOverrides): StackBranch {
     worktreePath: null,
     worktreePeacockColor: null,
     pullRequest: null,
-    isMergedIntoTrunk: opts.isMergedIntoTrunk ?? false,
+    needsAttention: false, isMergedIntoTrunk: opts.isMergedIntoTrunk ?? false,
   };
 }
 

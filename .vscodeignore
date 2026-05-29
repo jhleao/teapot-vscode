@@ -3,6 +3,9 @@
 src/**
 .gitignore
 .github/**
+.claude/**
+.codex/**
+scripts/**
 tsconfig.json
 esbuild.mjs
 node_modules/**

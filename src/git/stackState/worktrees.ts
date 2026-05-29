@@ -32,3 +32,25 @@ export function buildWorktreePathByBranchRef(
 
   return worktreePathByBranchRef;
 }
+
+// Like buildWorktreePathByBranchRef, but also includes the main checkout. The
+// agent-attention signal needs the main checkout's branch mapped to its path
+// so the dot can light up the currently-open window's own row; the display
+// map deliberately excludes it to avoid a redundant worktree badge on the
+// branch you're already inside.
+export function buildWorktreePathByBranchRefIncludingMain(
+  worktrees: WorktreeInfo[]
+): Map<string, string> {
+  const byBranch = new Map<string, string>();
+
+  for (const worktree of worktrees) {
+    if (!worktree.branch) {
+      continue;
+    }
+    if (!byBranch.has(worktree.branch)) {
+      byBranch.set(worktree.branch, worktree.path);
+    }
+  }
+
+  return byBranch;
+}

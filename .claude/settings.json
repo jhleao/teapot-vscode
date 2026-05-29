@@ -1,0 +1,54 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "TEAPOT_AGENT_NAME=claude bash scripts/teapot-agent-attention.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "TEAPOT_AGENT_NAME=claude bash scripts/teapot-agent-attention.sh"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "TEAPOT_AGENT_NAME=claude bash scripts/teapot-agent-attention.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "TEAPOT_AGENT_NAME=claude bash scripts/teapot-agent-attention.sh"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "TEAPOT_AGENT_NAME=claude bash scripts/teapot-agent-attention.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

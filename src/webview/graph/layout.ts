@@ -80,6 +80,7 @@ export interface RowModel {
   isDraggable: boolean;
   worktreePath: string | null;
   worktreePeacockColor: string | null;
+  needsAttention: boolean;
   pullRequest: PullRequestInfo | null;
   additionalBranchRefs: string[];
   // Refs that share this row but render as their own full branch label
@@ -184,6 +185,7 @@ export function layoutRows(state: StackState): RowModel[] {
         isDraggable: !branch.isTrunk && branch.headSha !== branch.baseSha,
         worktreePath: branch.worktreePath,
         worktreePeacockColor: branch.worktreePeacockColor,
+        needsAttention: branch.needsAttention,
         pullRequest: branch.pullRequest,
         additionalBranchRefs: additionalRefsByPrimary.get(branch.ref) ?? [],
         coPrimaryBranchRefs: coPrimaryRefsByPrimary.get(branch.ref) ?? [],
@@ -223,6 +225,7 @@ export function layoutRows(state: StackState): RowModel[] {
         isDraggable: isBranchTip && !branch.isTrunk && branch.headSha !== branch.baseSha,
         worktreePath: isBranchTip ? branch.worktreePath : null,
         worktreePeacockColor: isBranchTip ? branch.worktreePeacockColor : null,
+        needsAttention: isBranchTip ? branch.needsAttention : false,
         pullRequest: isBranchTip ? branch.pullRequest : null,
         additionalBranchRefs: isBranchTip
           ? additionalRefsByPrimary.get(branch.ref) ?? []
@@ -255,6 +258,7 @@ export function layoutRows(state: StackState): RowModel[] {
         isDraggable: false,
         worktreePath: null,
         worktreePeacockColor: null,
+        needsAttention: false,
         pullRequest: null,
         additionalBranchRefs: [],
         coPrimaryBranchRefs: [],

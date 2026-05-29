@@ -1,5 +1,5 @@
 import { mkdir, readdir } from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative } from 'node:path';
 import * as vscode from 'vscode';
 import { BranchNamingUtils } from '../git/branchNaming';
 import { GitClient } from '../git/gitClient';
@@ -38,6 +38,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   private readonly viewDisposables: vscode.Disposable[] = [];
   private view: vscode.WebviewView | undefined;
   private gitWatcher: GitRefsWatcher | undefined;
+  private agentsWatcher: vscode.FileSystemWatcher | undefined;
   private watchedRepoRoot: string | null = null;
   private cachedStackState: StackState | null = null;
   private cachedWorkspaceRoot: string | null = null;
@@ -292,6 +293,46 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       },
     });
     this.watchedRepoRoot = repoRoot;
+    void this.attachAgentsWatcher(repoRoot);
+  }
+
+  // Watches the shared <common-git-dir>/teapot/agents/ directory so the view
+  // refreshes when an agent-attention file is written/cleared. In the main
+  // checkout the common git dir lives under the workspace root and is already
+  // covered by GitRefsWatcher's relative '.git/teapot/agents/**' pattern; this
+  // absolute-base watcher only kicks in for linked worktrees, whose shared git
+  // dir is outside the workspace (and unreachable via the worktree's .git file).
+  private async attachAgentsWatcher(repoRoot: string): Promise<void> {
+    let commonGitDir: string;
+    try {
+      const git = await GitClient.open(repoRoot);
+      if (!git) {
+        return;
+      }
+      commonGitDir = await git.getCommonGitDir();
+    } catch {
+      return;
+    }
+
+    if (this.disposed || this.watchedRepoRoot !== repoRoot) {
+      return;
+    }
+
+    const relativeToRepo = relative(repoRoot, commonGitDir);
+    const isUnderRepoRoot =
+      relativeToRepo !== '' && !relativeToRepo.startsWith('..') && !isAbsolute(relativeToRepo);
+    if (isUnderRepoRoot) {
+      return;
+    }
+
+    const watcher = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(vscode.Uri.file(commonGitDir), 'teapot/agents/**')
+    );
+    const refresh = () => void this.refresh();
+    watcher.onDidChange(refresh);
+    watcher.onDidCreate(refresh);
+    watcher.onDidDelete(refresh);
+    this.agentsWatcher = watcher;
   }
 
   private disposeViewState(): void {
@@ -306,6 +347,8 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   private disposeGitWatcher(): void {
     this.gitWatcher?.dispose();
     this.gitWatcher = undefined;
+    this.agentsWatcher?.dispose();
+    this.agentsWatcher = undefined;
     this.watchedRepoRoot = null;
   }
 

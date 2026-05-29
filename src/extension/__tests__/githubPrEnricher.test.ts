@@ -64,7 +64,7 @@ function createBranch(overrides: Partial<StackBranch> = {}): StackBranch {
     worktreePath: null,
     worktreePeacockColor: null,
     pullRequest: null,
-    isMergedIntoTrunk: false,
+    needsAttention: false, isMergedIntoTrunk: false,
     ...overrides,
   };
 }

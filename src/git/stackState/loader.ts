@@ -2,6 +2,7 @@ import type { ActiveRebaseState, StackBranch, StackState } from '../../protocol'
 import { GitClient, type LocalBranchHead } from '../gitClient';
 import { OperationQueueStore } from '../../rebase/queueStore';
 import { selectTrunk } from '../trunk';
+import { normalizeWorktreePath, readAttentionWorktreePaths } from './agentAttention';
 import {
   buildChildRefsByParent,
   determineTrunkCommitLimit,
@@ -10,6 +11,7 @@ import {
 import {
   buildPeacockColorByWorktreePath,
   buildWorktreePathByBranchRef,
+  buildWorktreePathByBranchRefIncludingMain,
 } from './worktrees';
 
 const DEFAULT_TRUNK_COMMIT_LIMIT = 200;
@@ -25,12 +27,17 @@ export class GitStackStateLoader {
     const repoRoot = git.getRepoRoot();
 
     try {
-      const [{ branches, currentBranch: currentBranchRef }, worktrees, hasUncommittedChanges] =
-        await Promise.all([
-          git.listLocalBranchesSnapshot(),
-          git.listWorktrees(),
-          git.hasAnyChanges(),
-        ]);
+      const [
+        { branches, currentBranch: currentBranchRef },
+        worktrees,
+        hasUncommittedChanges,
+        attentionPaths,
+      ] = await Promise.all([
+        git.listLocalBranchesSnapshot(),
+        git.listWorktrees(),
+        git.hasAnyChanges(),
+        readAgentAttention(git),
+      ]);
       const trunkRef = selectTrunk(iterBranchNames(branches));
       const topology = await resolveBranchTopology(git, branches, trunkRef);
       const childRefsByParent = buildChildRefsByParent(topology);
@@ -41,6 +48,8 @@ export class GitStackStateLoader {
         DEFAULT_TRUNK_COMMIT_LIMIT
       );
       const worktreePathByBranchRef = buildWorktreePathByBranchRef(worktrees, repoRoot);
+      const attentionWorktreePathByBranchRef =
+        buildWorktreePathByBranchRefIncludingMain(worktrees);
       const peacockColorByWorktreePath = await buildPeacockColorByWorktreePath(
         worktreePathByBranchRef
       );
@@ -70,6 +79,10 @@ export class GitStackStateLoader {
             worktreePeacockColor: worktreePath
               ? peacockColorByWorktreePath.get(worktreePath) ?? null
               : null,
+            needsAttention: branchNeedsAttention(
+              attentionWorktreePathByBranchRef.get(branch.name) ?? null,
+              attentionPaths
+            ),
             isMergedIntoTrunk,
           });
         })
@@ -137,6 +150,7 @@ async function createStackBranch(params: {
   trunkCommitLimit: number;
   worktreePath: string | null;
   worktreePeacockColor: string | null;
+  needsAttention: boolean;
   isMergedIntoTrunk: boolean;
 }): Promise<StackBranch> {
   const {
@@ -152,6 +166,7 @@ async function createStackBranch(params: {
     trunkCommitLimit,
     worktreePath,
     worktreePeacockColor,
+    needsAttention,
     isMergedIntoTrunk,
   } = params;
   const isCurrent = branch.name === currentBranchRef;
@@ -175,9 +190,29 @@ async function createStackBranch(params: {
     hasUncommittedChanges: isCurrent && hasUncommittedChanges,
     worktreePath,
     worktreePeacockColor,
+    needsAttention,
     pullRequest: null,
     isMergedIntoTrunk,
   };
+}
+
+function branchNeedsAttention(
+  worktreePath: string | null,
+  attentionPaths: Set<string>
+): boolean {
+  if (!worktreePath) {
+    return false;
+  }
+  return attentionPaths.has(normalizeWorktreePath(worktreePath));
+}
+
+async function readAgentAttention(git: GitClient): Promise<Set<string>> {
+  try {
+    const commonGitDir = await git.getCommonGitDir();
+    return await readAttentionWorktreePaths(commonGitDir);
+  } catch {
+    return new Set();
+  }
 }
 
 function createErrorState(error: string): StackState {

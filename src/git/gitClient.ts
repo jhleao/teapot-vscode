@@ -78,6 +78,18 @@ export class GitClient {
     return this.gitDir;
   }
 
+  // The shared git directory across all worktrees of this repo. Unlike
+  // getGitDir() (per-worktree), this is identical from every worktree, so
+  // cross-worktree state (e.g. agent-attention files) lives here.
+  async getCommonGitDir(): Promise<string> {
+    const stdout = await this.run([
+      'rev-parse',
+      '--path-format=absolute',
+      '--git-common-dir',
+    ]);
+    return stdout.trim();
+  }
+
   async getCurrentBranch(): Promise<string | null> {
     try {
       const stdout = await this.run(['symbolic-ref', '--short', 'HEAD']);

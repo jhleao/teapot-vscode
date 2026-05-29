@@ -1,0 +1,64 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "TEAPOT_AGENT_NAME=codex bash scripts/teapot-agent-attention.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "TEAPOT_AGENT_NAME=codex bash scripts/teapot-agent-attention.sh"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "TEAPOT_AGENT_NAME=codex bash scripts/teapot-agent-attention.sh"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "TEAPOT_AGENT_NAME=codex bash scripts/teapot-agent-attention.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "TEAPOT_AGENT_NAME=codex bash scripts/teapot-agent-attention.sh"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "TEAPOT_AGENT_NAME=codex bash scripts/teapot-agent-attention.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

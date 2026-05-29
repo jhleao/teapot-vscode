@@ -34,7 +34,7 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
           hasUncommittedChanges: false,
           worktreePath: null,
           worktreePeacockColor: null,
-          pullRequest: null, isMergedIntoTrunk: false,
+          pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
         {
           ref: 'qowi',
@@ -49,7 +49,7 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
           hasUncommittedChanges: false,
           worktreePath: null,
           worktreePeacockColor: null,
-          pullRequest: null, isMergedIntoTrunk: false,
+          pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
         {
           ref: 'laks',
@@ -64,7 +64,7 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
           hasUncommittedChanges: false,
           worktreePath: null,
           worktreePeacockColor: null,
-          pullRequest: null, isMergedIntoTrunk: false,
+          pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
         {
           ref: 'ioqw',
@@ -79,7 +79,7 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
           hasUncommittedChanges: false,
           worktreePath: null,
           worktreePeacockColor: null,
-          pullRequest: null, isMergedIntoTrunk: false,
+          pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
         {
           ref: 'branch2',
@@ -97,7 +97,7 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
           hasUncommittedChanges: false,
           worktreePath: null,
           worktreePeacockColor: null,
-          pullRequest: null, isMergedIntoTrunk: false,
+          pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
         {
           ref: 'lobster-53f8',
@@ -115,7 +115,7 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
           hasUncommittedChanges: false,
           worktreePath: null,
           worktreePeacockColor: null,
-          pullRequest: null, isMergedIntoTrunk: false,
+          pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
       ],
       trunk: 'main',
@@ -168,7 +168,7 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
           childRefs: ['D', 'B', 'O'],
           commits: [{ sha: 'main_tip', message: 'main', author: 'dev', timeMs: 1, parentSha: '' }],
           isTrunk: true, isRemote: false, isCurrent: false, hasUncommittedChanges: false,
-          worktreePath: null, worktreePeacockColor: null, pullRequest: null, isMergedIntoTrunk: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
         {
           ref: 'D',
@@ -183,7 +183,7 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
             { sha: 'b1', message: 'feat: entity refs', author: 'dev', timeMs: 60, parentSha: 'main_tip' },
           ],
           isTrunk: false, isRemote: false, isCurrent: false, hasUncommittedChanges: false,
-          worktreePath: null, worktreePeacockColor: null, pullRequest: null, isMergedIntoTrunk: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
         {
           ref: 'B',
@@ -198,7 +198,7 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
             { sha: 'b1', message: 'feat: entity refs', author: 'dev', timeMs: 60, parentSha: 'main_tip' },
           ],
           isTrunk: false, isRemote: false, isCurrent: false, hasUncommittedChanges: false,
-          worktreePath: null, worktreePeacockColor: null, pullRequest: null, isMergedIntoTrunk: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
         {
           ref: 'O',
@@ -213,7 +213,7 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
             { sha: 'b1', message: 'feat: entity refs', author: 'dev', timeMs: 60, parentSha: 'main_tip' },
           ],
           isTrunk: false, isRemote: false, isCurrent: false, hasUncommittedChanges: false,
-          worktreePath: null, worktreePeacockColor: null, pullRequest: null, isMergedIntoTrunk: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
         {
           ref: 'J',
@@ -223,7 +223,7 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
           childRefs: [],
           commits: [{ sha: 'J_tip', message: 'chore: the circle', author: 'dev', timeMs: 500, parentSha: 'O_tip' }],
           isTrunk: false, isRemote: false, isCurrent: true, hasUncommittedChanges: false,
-          worktreePath: null, worktreePeacockColor: null, pullRequest: null, isMergedIntoTrunk: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
       ],
       trunk: 'main',
@@ -276,7 +276,7 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
           childRefs: ['laks'],
           commits: [{ sha: 'm1', message: 'reset repo', author: 'dev', timeMs: 1, parentSha: '' }],
           isTrunk: true, isRemote: false, isCurrent: false, hasUncommittedChanges: false,
-          worktreePath: null, worktreePeacockColor: null, pullRequest: null, isMergedIntoTrunk: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
         {
           ref: 'laks',
@@ -286,7 +286,7 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
           childRefs: ['qowi', 'toucan-b034'],
           commits: [{ sha: 'laks_c', message: 'laks', author: 'dev', timeMs: 100, parentSha: 'm1' }],
           isTrunk: false, isRemote: false, isCurrent: false, hasUncommittedChanges: false,
-          worktreePath: null, worktreePeacockColor: null, pullRequest: null, isMergedIntoTrunk: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
         {
           ref: 'qowi',
@@ -296,7 +296,7 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
           childRefs: [],
           commits: [{ sha: 'qowi_c', message: 'qowi', author: 'dev', timeMs: 200, parentSha: 'laks_c' }],
           isTrunk: false, isRemote: false, isCurrent: false, hasUncommittedChanges: false,
-          worktreePath: null, worktreePeacockColor: null, pullRequest: null, isMergedIntoTrunk: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
         {
           ref: 'toucan-b034',
@@ -306,7 +306,7 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
           childRefs: [],
           commits: [{ sha: 'toucan_c', message: 'wip', author: 'dev', timeMs: 900, parentSha: 'laks_c' }],
           isTrunk: false, isRemote: false, isCurrent: true, hasUncommittedChanges: false,
-          worktreePath: null, worktreePeacockColor: null, pullRequest: null, isMergedIntoTrunk: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
       ],
       trunk: 'main',
@@ -352,7 +352,7 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
           childRefs: ['laks', 'ioqw'],
           commits: [{ sha: 'm1', message: 'reset', author: 'dev', timeMs: 1, parentSha: '' }],
           isTrunk: true, isRemote: false, isCurrent: false, hasUncommittedChanges: false,
-          worktreePath: null, worktreePeacockColor: null, pullRequest: null, isMergedIntoTrunk: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
         {
           ref: 'laks',
@@ -362,7 +362,7 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
           childRefs: ['qowi', 'octopus-8434'],
           commits: [{ sha: 'laks_c', message: 'laks', author: 'dev', timeMs: 100, parentSha: 'm1' }],
           isTrunk: false, isRemote: false, isCurrent: false, hasUncommittedChanges: false,
-          worktreePath: null, worktreePeacockColor: null, pullRequest: null, isMergedIntoTrunk: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
         {
           ref: 'ioqw',
@@ -372,7 +372,7 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
           childRefs: [],
           commits: [{ sha: 'ioqw_c', message: 'ioqw', author: 'dev', timeMs: 121, parentSha: 'm1' }],
           isTrunk: false, isRemote: false, isCurrent: false, hasUncommittedChanges: false,
-          worktreePath: null, worktreePeacockColor: null, pullRequest: null, isMergedIntoTrunk: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
         {
           ref: 'qowi',
@@ -382,7 +382,7 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
           childRefs: [],
           commits: [{ sha: 'qowi_c', message: 'qowi', author: 'dev', timeMs: 200, parentSha: 'laks_c' }],
           isTrunk: false, isRemote: false, isCurrent: true, hasUncommittedChanges: false,
-          worktreePath: null, worktreePeacockColor: null, pullRequest: null, isMergedIntoTrunk: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
         {
           ref: 'octopus-8434',
@@ -392,7 +392,7 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
           childRefs: [],
           commits: [{ sha: 'octo_c', message: 'wip', author: 'dev', timeMs: 900, parentSha: 'laks_c' }],
           isTrunk: false, isRemote: false, isCurrent: false, hasUncommittedChanges: false,
-          worktreePath: null, worktreePeacockColor: null, pullRequest: null, isMergedIntoTrunk: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
       ],
       trunk: 'main',
@@ -427,7 +427,7 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
           childRefs: ['laks'],
           commits: [{ sha: 'm1', message: 'reset', author: 'dev', timeMs: 1, parentSha: '' }],
           isTrunk: true, isRemote: false, isCurrent: false, hasUncommittedChanges: false,
-          worktreePath: null, worktreePeacockColor: null, pullRequest: null, isMergedIntoTrunk: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
         {
           ref: 'laks',
@@ -437,7 +437,7 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
           childRefs: ['ioqw', 'qowi', 'octopus-8434'],
           commits: [{ sha: 'laks_c', message: 'laks', author: 'dev', timeMs: 100, parentSha: 'm1' }],
           isTrunk: false, isRemote: false, isCurrent: false, hasUncommittedChanges: false,
-          worktreePath: null, worktreePeacockColor: null, pullRequest: null, isMergedIntoTrunk: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
         {
           ref: 'ioqw',
@@ -447,7 +447,7 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
           childRefs: [],
           commits: [{ sha: 'ioqw_c', message: 'ioqw', author: 'dev', timeMs: 150, parentSha: 'laks_c' }],
           isTrunk: false, isRemote: false, isCurrent: false, hasUncommittedChanges: false,
-          worktreePath: null, worktreePeacockColor: null, pullRequest: null, isMergedIntoTrunk: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
         {
           ref: 'qowi',
@@ -457,7 +457,7 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
           childRefs: [],
           commits: [{ sha: 'qowi_c', message: 'qowi', author: 'dev', timeMs: 400, parentSha: 'laks_c' }],
           isTrunk: false, isRemote: false, isCurrent: true, hasUncommittedChanges: false,
-          worktreePath: null, worktreePeacockColor: null, pullRequest: null, isMergedIntoTrunk: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
         {
           ref: 'octopus-8434',
@@ -467,7 +467,7 @@ describe('scenario: sibling cluster with branchless ancestor', () => {
           childRefs: [],
           commits: [{ sha: 'octo_c', message: 'wip', author: 'dev', timeMs: 900, parentSha: 'laks_c' }],
           isTrunk: false, isRemote: false, isCurrent: false, hasUncommittedChanges: false,
-          worktreePath: null, worktreePeacockColor: null, pullRequest: null, isMergedIntoTrunk: false,
+          worktreePath: null, worktreePeacockColor: null, pullRequest: null, needsAttention: false, isMergedIntoTrunk: false,
         },
       ],
       trunk: 'main',

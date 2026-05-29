@@ -340,6 +340,13 @@ function buildActiveRebaseStatusText(activeRebase: ActiveRebaseState): string {
   return base;
 }
 
+function createAttentionDot(): HTMLElement {
+  const dot = document.createElement('span');
+  dot.className = 'attn-dot';
+  dot.title = 'A coding agent in this worktree needs your attention';
+  return dot;
+}
+
 function renderRow(
   row: RowModel,
   context: RowRenderContext
@@ -383,6 +390,10 @@ function renderRow(
   }
   if (row.showsRebaseActions) {
     rowElement.dataset.pendingRebaseRoot = 'true';
+  }
+
+  if (row.needsAttention) {
+    rowElement.append(createAttentionDot());
   }
 
   const graphContainer = document.createElement('div');
