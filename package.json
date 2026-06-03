@@ -2,7 +2,7 @@
   "name": "teapot-vscode",
   "displayName": "Teapot",
   "description": "Stacked branches visualizer with drag-and-drop rebase intents, native inside VSCode",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "publisher": "jhleao",
   "engines": {
     "vscode": "^1.85.0"

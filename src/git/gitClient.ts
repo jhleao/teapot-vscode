@@ -261,6 +261,14 @@ export class GitClient {
     await this.run(['commit', '--amend', '-m', message, '--allow-empty']);
   }
 
+  // Full raw commit message (subject + body) for a single commit. The stack
+  // view only loads %s (subject), so this is needed to pre-fill an amend with
+  // the existing body intact.
+  async getCommitMessage(sha: string): Promise<string> {
+    const stdout = await this.run(['log', '-1', '--format=%B', sha]);
+    return stdout.replace(/\n+$/, '');
+  }
+
   async formatPatchRange(range: string): Promise<string> {
     return this.run(['format-patch', '--stdout', '--binary', range]);
   }

@@ -27,6 +27,7 @@ import { applyRebaseIntentToState } from '../rebase/project';
 import { QueueBuilderUtils } from '../rebase/queueBuilder';
 import { OperationQueueStore } from '../rebase/queueStore';
 import { GitHubAuthUtils } from '../github/auth';
+import { editCommitMessage } from './commitMessageEditor';
 import { GitHubPrEnricher } from './githubPrEnricher';
 import { PushExpectationStore } from './pushExpectationStore';
 import { GitRefsWatcher } from './gitWatcher';
@@ -933,18 +934,19 @@ export class StackViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       buildIntentNode(branchesByRef, ref)
     );
 
-    const newMessage = await vscode.window.showInputBox({
-      title: 'Amend Commit Message',
-      prompt: 'Rewrites the current commit with a new message',
-      value: currentMessage,
-      validateInput: (value) => (value.trim() ? null : 'Commit message cannot be empty'),
-    });
+    let existingMessage: string;
+    try {
+      existingMessage = await git.getCommitMessage(commitSha);
+    } catch {
+      existingMessage = currentMessage;
+    }
 
+    const newMessage = await editCommitMessage(existingMessage);
     if (newMessage === undefined) {
       return;
     }
 
-    await git.amendCommitMessage(newMessage.trim());
+    await git.amendCommitMessage(newMessage);
     const newHead = await git.revParse('HEAD');
 
     if (descendantSubtrees.length === 0) {
